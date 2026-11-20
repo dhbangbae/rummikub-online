@@ -319,14 +319,42 @@ function handleServerTimeout(room) {
     return;
   }
 
-  const modified = hasBoardChanged(room.board, room.turnSnapshot.board);
-  const allGroupsValid = getBoardGroups(room.board).every(g => g.valid);
-  const unresolved = modified || !allGroupsValid;
+  // Check whether any incomplete (invalid) group exists on the board at 40s timeout
+  const groups = getBoardGroups(room.board);
+  const hasInvalidGroup = groups.some(g => !g.valid);
+  let keptMadeOnBoard = false;
+  let hasUnresolvableOldBreak = false;
 
-  room.board = cloneBoard(room.turnSnapshot.board);
-  player.rack = cloneRack(room.turnSnapshot.rack);
+  if (hasInvalidGroup) {
+    for (const g of groups) {
+      if (!g.valid) {
+        const onlyFromRack = g.tiles.every(t => room.playedFromRackIds.has(t.id));
+        if (onlyFromRack) {
+          for (let c = g.startCol; c <= g.endCol; c++) {
+            const t = room.board[g.row][c];
+            if (t) {
+              room.board[g.row][c] = null;
+              addTileToRack(player, t);
+            }
+          }
+        } else {
+          hasUnresolvableOldBreak = true;
+        }
+      }
+    }
+    if (hasUnresolvableOldBreak) {
+      room.board = cloneBoard(room.turnSnapshot.board);
+      player.rack = cloneRack(room.turnSnapshot.rack);
+    } else {
+      keptMadeOnBoard = hasBoardChanged(room.board, room.turnSnapshot.board);
+    }
+  } else {
+    // All groups on the board are valid made sets -> keep them as placed!
+    keptMadeOnBoard = hasBoardChanged(room.board, room.turnSnapshot.board);
+  }
 
-  const penalty = unresolved ? 3 : 1;
+  // Incomplete board state -> 3 penalty tiles; otherwise -> force draw 1 tile
+  const penalty = hasInvalidGroup ? 3 : 1;
   let drawn = 0;
   for (let i = 0; i < penalty && room.pool.length > 0; i++) {
     addTileToRack(player, room.pool.pop());
@@ -335,9 +363,11 @@ function handleServerTimeout(room) {
   room.consecutivePasses++;
   advanceRoomTurn(
     room,
-    unresolved
+    hasInvalidGroup
       ? `${player.name} 시간 초과! 미완성 패를 회수하고 페널티 ${drawn}장을 받았습니다.`
-      : `${player.name} 시간 초과! 타일 ${drawn}장을 뽑았습니다.`,
+      : keptMadeOnBoard
+        ? `${player.name} 시간 초과! 메이드된 패는 보드에 유지되고 강제로 ${drawn}장을 받았습니다.`
+        : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`,
     'error'
   );
 }

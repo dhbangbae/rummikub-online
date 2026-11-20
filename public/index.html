@@ -1211,6 +1211,69 @@
       return res;
     }
 
+    function getRackRowContiguousItems(rackIdx) {
+      const player = (typeof getMyOnlinePlayer === "function" ? getMyOnlinePlayer() : null) || getCurrentPlayer();
+      if (!player || !player.rack[rackIdx]) return [];
+      const rowSize = Math.floor(player.rack.length / 2);
+      const rowStart = rackIdx < rowSize ? 0 : rowSize;
+      const rowEnd = rowStart + rowSize - 1;
+      let cStart = rackIdx;
+      while (cStart > rowStart && player.rack[cStart - 1]) cStart--;
+      let cEnd = rackIdx;
+      while (cEnd < rowEnd && player.rack[cEnd + 1]) cEnd++;
+      const res = [];
+      for (let i = cStart; i <= cEnd; i++) res.push({ tile: player.rack[i], idx: i });
+      return res;
+    }
+
+    function getCompatibleForwardChain(items, startIdx) {
+      if (!items || startIdx < 0 || startIdx >= items.length) return [];
+      const first = items[startIdx];
+      if (!first || !first.tile) return [];
+
+      // If anchor is a joker, only extend if the cards immediately after it already form a compatible run or group (2+)
+      if (first.tile.isJoker) {
+        if (startIdx + 1 >= items.length) return [first];
+        const nextChain = getCompatibleForwardChain(items, startIdx + 1);
+        return nextChain.length >= 2 ? [first, ...nextChain] : [first];
+      }
+
+      // 1) Same-color strictly consecutive forward run (num, num+1, num+2, ...)
+      const runChain = [first];
+      let expectedNum = first.tile.num + 1;
+      for (let i = startIdx + 1; i < items.length; i++) {
+        const cur = items[i];
+        if (!cur || !cur.tile) break;
+        if (!cur.tile.isJoker && cur.tile.color === first.tile.color && cur.tile.num === expectedNum) {
+          runChain.push(cur);
+          expectedNum++;
+        } else if (cur.tile.isJoker && expectedNum <= 13 && runChain.length >= 2) {
+          runChain.push(cur);
+          expectedNum++;
+        } else {
+          break;
+        }
+      }
+
+      // 2) Same-number distinct-color forward group (up to 4 tiles)
+      const groupChain = [first];
+      const usedColors = new Set([first.tile.color]);
+      for (let i = startIdx + 1; i < items.length && groupChain.length < 4; i++) {
+        const cur = items[i];
+        if (!cur || !cur.tile) break;
+        if (!cur.tile.isJoker && cur.tile.num === first.tile.num && !usedColors.has(cur.tile.color)) {
+          usedColors.add(cur.tile.color);
+          groupChain.push(cur);
+        } else if (cur.tile.isJoker && groupChain.length >= 2) {
+          groupChain.push(cur);
+        } else {
+          break;
+        }
+      }
+
+      return groupChain.length > runChain.length ? groupChain : runChain;
+    }
+
     function getRackContiguousGroup(rackIdx) {
       const player = (typeof getMyOnlinePlayer === "function" ? getMyOnlinePlayer() : null) || getCurrentPlayer();
       if (!player || !player.rack[rackIdx]) return [];
@@ -1962,8 +2025,8 @@
 
     function onTilePointerDown(e, originType, tile, pos) {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
-      const player = getCurrentPlayer();
-      if (!player || player.isAI || state.phase !== 'playing') return;
+      if (state.phase !== 'playing') return;
+      if (originType === 'board' && !isMyOnlineTurn()) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -1975,12 +2038,13 @@
         if (!isSameLifted) clearLifted();
       }
 
-      const fullGroup = originType === 'board'
+      const rawGroup = originType === 'board'
         ? getBoardContiguousGroup(pos.row, pos.col)
-        : getRackContiguousGroup(pos.idx);
-      const anchorIdx = fullGroup.findIndex(item => item.tile.id === tile.id);
-      // Forward-only selection: clicked tile and tiles behind (to the right of) it only
-      const forwardGroup = anchorIdx >= 0 ? fullGroup.slice(anchorIdx) : [{ tile }];
+        : getRackRowContiguousItems(pos.idx);
+      const anchorIdx = rawGroup.findIndex(item => item.tile.id === tile.id);
+      // Forward-only & rule-compatible chain: ONLY same-color consecutive numbers OR same-number distinct colors
+      const forwardGroup = anchorIdx >= 0 ? getCompatibleForwardChain(rawGroup, anchorIdx) : [{ tile }];
+      const canHoldExpand = forwardGroup.length >= 2;
 
       interact.active = true;
       interact.pointerId = e.pointerId;
@@ -1994,26 +2058,24 @@
       interact.currX = e.clientX;
       interact.currY = e.clientY;
       interact.holdStart = performance.now();
-      interact.holdStage = 1; // Immediately select 1 tile on press!
+      interact.holdStage = canHoldExpand ? 1 : 0; // Only enter hold-selection if tile satisfies compatible run/group rule!
       interact.isDragging = false;
       interact.snapTarget = null;
 
-      // Immediate visual selection feedback
-      renderBoard();
-      renderRack();
+      if (canHoldExpand) {
+        renderBoard();
+        renderRack();
 
-      // Show hold ring immediately
-      holdRingContainer.style.display = 'block';
-      holdRingContainer.style.left = `${e.clientX}px`;
-      holdRingContainer.style.top = `${e.clientY - 22}px`;
-      holdRingCount.textContent = '1';
-      holdRingLabel.textContent = forwardGroup.length > 1
-        ? '1개 선택됨 (0.25초마다 뒤로 +1개)'
-        : '1개 선택됨';
-      holdRingArc.style.stroke = '#38bdf8';
-      holdRingArc.style.strokeDashoffset = forwardGroup.length > 1 ? '100.53' : '0';
+        holdRingContainer.style.display = 'block';
+        holdRingContainer.style.left = `${e.clientX}px`;
+        holdRingContainer.style.top = `${e.clientY - 22}px`;
+        holdRingCount.textContent = '1';
+        holdRingLabel.textContent = '1개 선택됨 (0.25초마다 뒤로 +1개)';
+        holdRingArc.style.stroke = '#38bdf8';
+        holdRingArc.style.strokeDashoffset = '100.53';
 
-      startHoldLoop();
+        startHoldLoop();
+      }
 
       window.addEventListener('pointermove', onGlobalPointerMove);
       window.addEventListener('pointerup', onGlobalPointerUp);
@@ -2203,11 +2265,6 @@
             playHoldStage(3);
             const setInfo = validateSet(madeSet);
             showToast(`메이드 패 ${madeSet.length}개 (${setInfo.points}점) 선택됨! 보드로 드래그해 놓으세요.`, 'success');
-          } else {
-            lifted.active = true;
-            lifted.originType = 'rack';
-            lifted.tiles = selected;
-            playHoldStage(1);
           }
           renderBoard();
           renderRack();
@@ -2231,13 +2288,39 @@
 
     // Selected (lifted) tiles are placed by dragging them onto the board
 
+    function closeGroupGapsOnBoard(removedSpots) {
+      // If pulling 1 tile from a 4-tile same-number group leaves a 1-cell gap between left & right tiles that form a valid 3-tile group, automatically slide them together!
+      const closedIds = new Set();
+      for (const { row, col } of removedSpots) {
+        if (state.board[row][col]) continue; // already refilled
+        const leftGrp = col > 0 && state.board[row][col - 1] ? getBoardContiguousGroup(row, col - 1) : [];
+        const rightGrp = col + 1 < GRID_COLS && state.board[row][col + 1] ? getBoardContiguousGroup(row, col + 1) : [];
+        if (leftGrp.length === 0 || rightGrp.length === 0) continue;
+
+        const combined = [...leftGrp.map(x => x.tile), ...rightGrp.map(x => x.tile)];
+        const check = validateSet(combined);
+        if (check.valid && check.type === 'group') {
+          // Shift rightGrp 1 cell to the left to close the gap seamlessly
+          for (const item of rightGrp) {
+            state.board[row][item.col - 1] = item.tile;
+            state.board[row][item.col] = null;
+            closedIds.add(item.tile.id);
+          }
+          for (const item of leftGrp) closedIds.add(item.tile.id);
+        }
+      }
+      return closedIds;
+    }
+
     function removeTilesFromCurrentLocations(tileIds) {
-      const player = getCurrentPlayer();
+      const player = (typeof getMyOnlinePlayer === "function" ? getMyOnlinePlayer() : null) || getCurrentPlayer();
+      const removedBoardSpots = [];
       // Remove from board
       for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
           if (state.board[r][c] && tileIds.has(state.board[r][c].id)) {
             state.board[r][c] = null;
+            removedBoardSpots.push({ row: r, col: c });
           }
         }
       }
@@ -2248,6 +2331,10 @@
             player.rack[i] = null;
           }
         }
+      }
+      // Automatically close gap if 1 tile was pulled from a 4-tile same-number group
+      if (removedBoardSpots.length === 1) {
+        closeGroupGapsOnBoard(removedBoardSpots);
       }
     }
 
@@ -2432,11 +2519,16 @@
       }
 
       // Remove from board / rack
+      const removedBoardSpots = [];
       for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
-          if (state.board[r][c] && ids.has(state.board[r][c].id)) state.board[r][c] = null;
+          if (state.board[r][c] && ids.has(state.board[r][c].id)) {
+            state.board[r][c] = null;
+            removedBoardSpots.push({ row: r, col: c });
+          }
         }
       }
+      if (removedBoardSpots.length === 1) closeGroupGapsOnBoard(removedBoardSpots);
       for (let i = 0; i < player.rack.length; i++) {
         if (player.rack[i] && ids.has(player.rack[i].id)) player.rack[i] = null;
       }
