@@ -325,6 +325,14 @@
       <button id="btnCancelLifted" type="button" class="px-2 py-0.5 rounded-full bg-slate-950/20 hover:bg-slate-950/35 text-[11px]">선택 취소</button>
     </div>
 
+    <!-- My Turn Alert Overlay -->
+    <div id="myTurnAlert" class="pointer-events-none hidden fixed inset-x-0 top-20 z-50 flex justify-center px-4">
+      <div class="px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black text-base sm:text-xl shadow-[0_0_30px_rgba(251,191,36,0.8)] border-2 border-white animate-bounce flex items-center gap-2">
+        <span>🔔</span>
+        <span>내 차례입니다! (40초)</span>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toastBox" class="pointer-events-none fixed top-24 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 opacity-0 translate-y-2">
       <div id="toastInner" class="px-4 py-2 rounded-xl bg-slate-950/92 border border-teal-500/50 text-white text-xs sm:text-sm font-bold shadow-2xl"></div>
@@ -359,12 +367,7 @@
 
       <!-- Right: Reset Turn & Draw / Confirm Turn -->
       <div class="flex sm:flex-col items-center justify-center gap-1.5 shrink-0">
-        <button id="btnResetTurn" type="button"
-          class="flex-1 sm:flex-none w-full sm:w-28 py-1.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 disabled:opacity-40 border border-slate-600 text-slate-100 font-bold text-xs shadow transition flex items-center justify-center gap-1"
-          title="이번 턴에 옮긴 타일을 모두 원위치">
-          <span>↺</span>
-          <span>되돌리기</span>
-        </button>
+
         <button id="btnEndTurn" type="button"
           class="flex-1 sm:flex-none w-full sm:w-28 py-2.5 px-2.5 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 hover:to-emerald-600 active:scale-95 border border-emerald-300/40 text-white font-black text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-1">
           <span id="btnEndTurnLabel">타일 뽑기 (+1)</span>
@@ -408,7 +411,7 @@
       <div class="p-6 space-y-4">
         <div>
           <label for="nicknameInput" class="block text-xs font-bold text-teal-200 uppercase tracking-wider mb-1.5">닉네임</label>
-          <input id="nicknameInput" type="text" maxlength="14" placeholder="닉네임 입력 (예: 루미왕)" value="플레이어"
+          <input id="nicknameInput" type="text" maxlength="14" placeholder="플레이어 이름을 입력하세요" value=""
             class="w-full px-3.5 py-2.5 rounded-xl bg-teal-950/90 border border-teal-700 text-white text-sm font-bold focus:outline-none focus:border-amber-400" />
         </div>
 
@@ -427,8 +430,8 @@
         <div class="rounded-xl bg-teal-950/60 border border-teal-800/80 p-3.5 space-y-2.5">
           <div class="text-xs font-extrabold text-sky-300">방 코드로 입장하기</div>
           <div class="flex gap-2">
-            <input id="joinCodeInput" type="text" maxlength="4" placeholder="코드 4자리"
-              class="flex-1 px-3.5 py-2.5 rounded-xl bg-teal-950/90 border border-teal-700 text-white text-sm font-black tracking-widest uppercase focus:outline-none focus:border-sky-400" />
+            <input id="joinCodeInput" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="숫자 4자리"
+              class="flex-1 px-3.5 py-2.5 rounded-xl bg-teal-950/90 border border-teal-700 text-white text-sm font-black tracking-widest focus:outline-none focus:border-sky-400" />
             <button id="btnJoinRoom" type="button" class="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm shadow transition">
               입장
             </button>
@@ -654,6 +657,26 @@
       });
     }
 
+    function playMyTurnAlert() {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const notes = [783.99, 1046.5, 1318.51]; // G5 -> C6 -> E6 bright chime
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        const t0 = now + idx * 0.09;
+        osc.frequency.setValueAtTime(freq, t0);
+        g.gain.setValueAtTime(0.22, t0);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.25);
+      });
+    }
+
     function playErrorBuzz() {
       const ctx = ensureAudio();
       if (!ctx) return;
@@ -736,7 +759,6 @@
     const meldStatusBadge = document.getElementById('meldStatusBadge');
     const btnSortRun = document.getElementById('btnSortRun');
     const btnSortGroup = document.getElementById('btnSortGroup');
-    const btnResetTurn = document.getElementById('btnResetTurn');
     const btnEndTurn = document.getElementById('btnEndTurn');
     const btnEndTurnLabel = document.getElementById('btnEndTurnLabel');
     const holdRingContainer = document.getElementById('holdRingContainer');
@@ -1190,7 +1212,7 @@
     }
 
     function getRackContiguousGroup(rackIdx) {
-      const player = getCurrentPlayer();
+      const player = (typeof getMyOnlinePlayer === "function" ? getMyOnlinePlayer() : null) || getCurrentPlayer();
       if (!player || !player.rack[rackIdx]) return [];
       const rowSize = Math.floor(player.rack.length / 2);
       const rowStart = rackIdx < rowSize ? 0 : rowSize;
@@ -1259,7 +1281,7 @@
     }
 
     function findMadeSetForRackTile(rackIdx) {
-      const player = getCurrentPlayer();
+      const player = (typeof getMyOnlinePlayer === "function" ? getMyOnlinePlayer() : null) || getCurrentPlayer();
       if (!player || !player.rack[rackIdx]) return null;
       const clicked = player.rack[rackIdx];
 
@@ -1376,8 +1398,8 @@
 
     function autoPlaceLiftedOnBoard() {
       if (!lifted.active || lifted.tiles.length === 0) return;
-      const player = getCurrentPlayer();
-      if (!player || player.isAI || state.phase !== 'playing') return;
+      if (state.phase !== 'playing') return;
+      if (originType === 'board' && !isMyOnlineTurn()) return;
 
       const toMove = [...lifted.tiles];
       let spot = findEmptySpotOnBoard(toMove.length);
@@ -1650,9 +1672,11 @@
         el.innerHTML = createJokerSVG(tile.color, Math.round(Math.min(width, height) * 0.72));
       } else {
         const numSpan = document.createElement('span');
-        const fontSize = Math.max(13, Math.round(width * 0.56));
+        const ratio = tile.num >= 10 ? 0.65 : 0.78;
+        const fontSize = Math.max(12, Math.round(width * ratio));
         numSpan.className = `rk-tile-num rk-color-${tile.color}`;
         numSpan.style.fontSize = `${fontSize}px`;
+        if (tile.num >= 10) numSpan.style.letterSpacing = '-0.08em';
         numSpan.textContent = String(tile.num);
         el.appendChild(numSpan);
 
@@ -1664,18 +1688,20 @@
     // ==================== LAYOUT & RENDERING ====================
     function computeBoardDimensions() {
       const rect = boardViewport.getBoundingClientRect();
-      const padX = 16;
-      const padY = 16;
-      const availW = Math.max(300, rect.width - padX);
-      const availH = Math.max(220, rect.height - padY);
+      const isNarrow = window.innerWidth < 640;
+      const padX = isNarrow ? 6 : 16;
+      const padY = isNarrow ? 6 : 16;
+      const availW = Math.max(240, rect.width - padX);
+      const availH = Math.max(160, rect.height - padY);
 
       const maxCellW = Math.floor(availW / GRID_COLS);
       const maxCellH = Math.floor(availH / GRID_ROWS);
 
-      // Classic Rummikub tile aspect ratio ~ 1 : 1.35
-      let cellW = Math.min(maxCellW, Math.floor(maxCellH / 1.32));
-      cellW = Math.max(18, Math.min(48, cellW));
-      const cellH = Math.min(maxCellH, Math.round(cellW * 1.32));
+      // Fit all 22x8 cells cleanly on mobile and desktop without clipping
+      const aspect = isNarrow ? 1.42 : 1.34;
+      let cellW = Math.min(maxCellW, Math.floor(maxCellH / aspect));
+      cellW = Math.max(12, Math.min(50, cellW));
+      const cellH = Math.max(18, Math.min(maxCellH, Math.round(cellW * aspect)));
 
       state.cellW = cellW;
       state.cellH = cellH;
@@ -1797,8 +1823,8 @@
         ? new Set(interact.selectedTiles.map(t => t.id))
         : new Set();
 
-      const tileW = state.cellW - 3;
-      const tileH = state.cellH - 4;
+      const tileW = Math.max(11, state.cellW - 2);
+      const tileH = Math.max(16, state.cellH - 2);
 
       // Render tiles on board
       for (let r = 0; r < GRID_ROWS; r++) {
@@ -1817,8 +1843,8 @@
 
           const el = buildTileElement(tile, tileW, tileH, extra);
           el.style.position = 'absolute';
-          el.style.left = `${c * state.cellW + 1.5}px`;
-          el.style.top = `${r * state.cellH + 2}px`;
+          el.style.left = `${c * state.cellW + 1}px`;
+          el.style.top = `${r * state.cellH + 1}px`;
           el.style.zIndex = '10';
           if (draggingIds.has(tile.id)) {
             el.style.opacity = '0.22';
@@ -1841,7 +1867,8 @@
       ensureRackCapacity(displayPlayer);
 
       const rowSize = Math.floor(displayPlayer.rack.length / 2);
-      const tileW = Math.max(30, Math.min(42, Math.floor((window.innerWidth - 260) / Math.max(14, rowSize))));
+      const sideReserve = window.innerWidth < 640 ? 28 : 250;
+      const tileW = Math.max(24, Math.min(44, Math.floor((window.innerWidth - sideReserve) / Math.max(12, rowSize))));
       const tileH = Math.round(tileW * 1.32);
 
       const draggingIds = interact.isDragging ? new Set(interact.selectedTiles.map(t => t.id)) : new Set();
@@ -1886,7 +1913,6 @@
       const canSort = Boolean(getRackOwnerForSort());
       btnSortRun.disabled = !canSort;
       btnSortGroup.disabled = !canSort;
-      btnResetTurn.disabled = !isHumanTurn || !hasBoardChangedFromSnapshot();
       btnEndTurn.disabled = !isHumanTurn;
 
       if (!isHumanTurn) {
@@ -2368,38 +2394,74 @@
     }
 
     function moveTilesToRack(tiles, targetIdx) {
-      const player = getCurrentPlayer();
+      const player = (typeof getMyOnlinePlayer === 'function' ? getMyOnlinePlayer() : null) || getCurrentPlayer();
       if (!player) return;
 
-      // Prevent pulling pre-existing board tiles into rack
-      const hasLockedBoardTile = tiles.some(t => !state.playedFromRackIds.has(t.id));
-      if (hasLockedBoardTile) {
-        playErrorBuzz();
-        showToast('바닥에 원래 있던 타일은 내 패로 가져올 수 없습니다.', 'error');
-        renderAll();
-        return;
+      // Check if any tile came from the board
+      const boardTileIds = new Set();
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (state.board[r][c]) boardTileIds.add(state.board[r][c].id);
+        }
+      }
+      const fromBoard = tiles.some(t => boardTileIds.has(t.id));
+      if (fromBoard) {
+        const hasLockedBoardTile = tiles.some(t => !state.playedFromRackIds.has(t.id));
+        if (hasLockedBoardTile) {
+          playErrorBuzz();
+          showToast('바닥에 원래 있던 타일은 내 패로 가져올 수 없습니다.', 'error');
+          renderAll();
+          return;
+        }
       }
 
-      const ids = new Set(tiles.map(t => t.id));
-      removeTilesFromCurrentLocations(ids);
-
       ensureRackCapacity(player);
-      if (targetIdx >= 0 && targetIdx < player.rack.length && tiles.length === 1 && !player.rack[targetIdx]) {
-        player.rack[targetIdx] = tiles[0];
-      } else {
-        let insertAt = targetIdx >= 0 ? targetIdx : 0;
-        for (const t of tiles) {
-          // Find next empty slot starting at insertAt
-          let placed = false;
+      const ids = new Set(tiles.map(t => t.id));
+
+      // Single-tile manual swap inside rack when dropping directly onto an occupied rack slot
+      if (!fromBoard && tiles.length === 1 && targetIdx >= 0 && targetIdx < player.rack.length && player.rack[targetIdx] && player.rack[targetIdx].id !== tiles[0].id) {
+        const srcIdx = player.rack.findIndex(t => t && t.id === tiles[0].id);
+        if (srcIdx !== -1) {
+          const displaced = player.rack[targetIdx];
+          player.rack[targetIdx] = tiles[0];
+          player.rack[srcIdx] = displaced;
+          playClack(false);
+          renderAll();
+          return;
+        }
+      }
+
+      // Remove from board / rack
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (state.board[r][c] && ids.has(state.board[r][c].id)) state.board[r][c] = null;
+        }
+      }
+      for (let i = 0; i < player.rack.length; i++) {
+        if (player.rack[i] && ids.has(player.rack[i].id)) player.rack[i] = null;
+      }
+
+      // Insert at targetIdx (shifting right if occupied, or placing directly if empty)
+      let insertAt = targetIdx >= 0 && targetIdx < player.rack.length ? targetIdx : 0;
+      for (const t of tiles) {
+        if (insertAt < player.rack.length && !player.rack[insertAt]) {
+          player.rack[insertAt] = t;
+          insertAt++;
+        } else {
+          // Shift existing tiles right from insertAt to first empty slot
+          let emptyPos = -1;
           for (let i = insertAt; i < player.rack.length; i++) {
-            if (!player.rack[i]) {
-              player.rack[i] = t;
-              insertAt = i + 1;
-              placed = true;
-              break;
-            }
+            if (!player.rack[i]) { emptyPos = i; break; }
           }
-          if (!placed) addTileToRack(player, t);
+          if (emptyPos !== -1) {
+            for (let i = emptyPos; i > insertAt; i--) {
+              player.rack[i] = player.rack[i - 1];
+            }
+            player.rack[insertAt] = t;
+            insertAt++;
+          } else {
+            addTileToRack(player, t);
+          }
         }
       }
 
@@ -2974,7 +3036,6 @@
 
     btnSortRun.addEventListener('click', sortRackByRun);
     btnSortGroup.addEventListener('click', sortRackByGroup);
-    btnResetTurn.addEventListener('click', () => resetCurrentTurn(false));
     btnEndTurn.addEventListener('click', onEndTurnClick);
     btnCancelLifted.addEventListener('click', clearLifted);
 
@@ -3045,7 +3106,6 @@
     // Patch sort buttons to always sort MY rack and sync to server
     btnSortRun.removeEventListener('click', sortRackByRun);
     btnSortGroup.removeEventListener('click', sortRackByGroup);
-    btnResetTurn.removeEventListener('click', () => resetCurrentTurn(false));
     btnEndTurn.removeEventListener('click', onEndTurnClick);
 
     btnSortRun.addEventListener('click', () => {
@@ -3089,19 +3149,12 @@
 
     const _origMoveToRack = moveTilesToRack;
     moveTilesToRack = function(tiles, targetIdx) {
-      if (!isMyOnlineTurn()) return;
+      if (state.phase !== 'playing') return;
       _origMoveToRack(tiles, targetIdx);
       syncMyRackToServer();
     };
 
-    // Override reset & end-turn buttons to emit server events
-    const btnResetClone = btnResetTurn.cloneNode(true);
-    btnResetTurn.parentNode.replaceChild(btnResetClone, btnResetTurn);
-    btnResetClone.addEventListener('click', () => {
-      if (!isMyOnlineTurn()) return;
-      clearLifted();
-      socket.emit('turn:reset');
-    });
+    // Reset button intentionally removed (40s timeout handles rollback + 3 penalty tiles)
 
     const btnEndClone = btnEndTurn.cloneNode(true);
     btnEndTurn.parentNode.replaceChild(btnEndClone, btnEndTurn);
@@ -3118,7 +3171,6 @@
       const evalRes = evaluateTurnState();
       btnSortRun.disabled = state.phase !== 'playing';
       btnSortGroup.disabled = state.phase !== 'playing';
-      btnResetClone.disabled = !myTurn || !hasBoardChangedFromSnapshot();
       btnEndClone.disabled = !myTurn;
 
       const endLabel = btnEndClone.querySelector('#btnEndTurnLabel') || btnEndClone;
@@ -3181,7 +3233,7 @@
           const el = buildTileElement(tile, tileW, tileH, extra);
           if (draggingIds.has(tile.id)) el.style.opacity = '0.22';
           el.addEventListener('pointerdown', (e) => {
-            if (!isMyOnlineTurn()) return;
+            if (state.phase !== 'playing') return;
             onTilePointerDown(e, 'rack', tile, { idx: i });
           });
           slot.appendChild(el);
@@ -3192,10 +3244,51 @@
       }
     };
 
+    // Restore saved player name from client localStorage
+    const nicknameInput = document.getElementById('nicknameInput');
+    const joinCodeInput = document.getElementById('joinCodeInput');
+    const myTurnAlertEl = document.getElementById('myTurnAlert');
+    let myTurnAlertTimer = null;
+    let lastAlertedTurnSeq = -1;
+
+    try {
+      const savedName = localStorage.getItem('rk_player_name');
+      if (savedName) nicknameInput.value = savedName;
+    } catch (_) {}
+
+    function saveNickname(name) {
+      try { localStorage.setItem('rk_player_name', name); } catch (_) {}
+    }
+
+    nicknameInput.addEventListener('input', () => {
+      const v = nicknameInput.value.trim();
+      if (v) saveNickname(v);
+    });
+
+    // Restrict join code input to 4 digits
+    joinCodeInput.addEventListener('input', () => {
+      joinCodeInput.value = joinCodeInput.value.replace(/[^0-9]/g, '').slice(0, 4);
+    });
+
+    function triggerMyTurnNotification() {
+      playMyTurnAlert();
+      myTurnAlertEl.classList.remove('hidden');
+      if (myTurnAlertTimer) clearTimeout(myTurnAlertTimer);
+      myTurnAlertTimer = setTimeout(() => {
+        myTurnAlertEl.classList.add('hidden');
+      }, 2400);
+    }
+
     // Lobby & Waiting Room UI Handlers
     document.getElementById('btnCreateRoom').addEventListener('click', () => {
       ensureAudio();
-      const name = document.getElementById('nicknameInput').value.trim() || '플레이어 1';
+      const name = nicknameInput.value.trim();
+      if (!name) {
+        showToast('플레이어 이름을 먼저 입력해 주세요.', 'error');
+        nicknameInput.focus();
+        return;
+      }
+      saveNickname(name);
       socket.emit('room:create', { name, maxPlayers: config.playerCount, sessionId }, (res) => {
         if (!res?.ok) showToast(res?.error || '방 생성 실패', 'error');
       });
@@ -3203,10 +3296,17 @@
 
     document.getElementById('btnJoinRoom').addEventListener('click', () => {
       ensureAudio();
-      const name = document.getElementById('nicknameInput').value.trim() || '플레이어';
-      const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
-      if (code.length < 4) {
-        showToast('4자리 방 코드를 입력해 주세요.', 'error');
+      const name = nicknameInput.value.trim();
+      if (!name) {
+        showToast('플레이어 이름을 먼저 입력해 주세요.', 'error');
+        nicknameInput.focus();
+        return;
+      }
+      saveNickname(name);
+      const code = joinCodeInput.value.replace(/[^0-9]/g, '').trim();
+      if (code.length !== 4) {
+        showToast('숫자 4자리 방 코드를 입력해 주세요.', 'error');
+        joinCodeInput.focus();
         return;
       }
       socket.emit('room:join', { code, name, sessionId }, (res) => {
@@ -3317,6 +3417,10 @@
         computeBoardDimensions();
         renderAll();
         updateTimerDisplay();
+        if (isMyOnlineTurn() && payload.turnSeq && payload.turnSeq !== lastAlertedTurnSeq) {
+          lastAlertedTurnSeq = payload.turnSeq;
+          triggerMyTurnNotification();
+        }
       } else if (state.phase === 'gameover' && payload.winnerInfo) {
         lobbyModal.classList.add('hidden');
         waitingModal.classList.add('hidden');

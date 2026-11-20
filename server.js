@@ -223,11 +223,9 @@ function evaluateRoomTurn(room) {
 
 // ==================== ROOM HELPERS ====================
 function generateRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   do {
-    code = '';
-    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    code = String(Math.floor(1000 + Math.random() * 9000));
   } while (rooms.has(code));
   return code;
 }
@@ -269,6 +267,7 @@ function broadcastRoomState(room, toastMsg = null, toastTone = 'info') {
       myPlayerId: p.id,
       myRack: p.rack,
       currentPlayerIndex: room.currentPlayerIndex,
+      turnSeq: room.turnSeq || 0,
       board: room.board,
       poolCount: room.pool.length,
       timeLeft: room.timeLeft,
@@ -290,6 +289,7 @@ function startRoomTurn(room) {
     rack: cloneRack(player.rack),
   };
   room.playedFromRackIds = new Set(getRackTiles(player).map(t => t.id));
+  room.turnSeq = (room.turnSeq || 0) + 1;
   room.timeLeft = TURN_SECONDS;
 
   broadcastRoomState(room);
@@ -320,10 +320,13 @@ function handleServerTimeout(room) {
   }
 
   const modified = hasBoardChanged(room.board, room.turnSnapshot.board);
+  const allGroupsValid = getBoardGroups(room.board).every(g => g.valid);
+  const unresolved = modified || !allGroupsValid;
+
   room.board = cloneBoard(room.turnSnapshot.board);
   player.rack = cloneRack(room.turnSnapshot.rack);
 
-  const penalty = modified ? 3 : 1;
+  const penalty = unresolved ? 3 : 1;
   let drawn = 0;
   for (let i = 0; i < penalty && room.pool.length > 0; i++) {
     addTileToRack(player, room.pool.pop());
@@ -332,8 +335,8 @@ function handleServerTimeout(room) {
   room.consecutivePasses++;
   advanceRoomTurn(
     room,
-    modified
-      ? `${player.name} 시간 초과! 원복 후 페널티 ${drawn}장을 받았습니다.`
+    unresolved
+      ? `${player.name} 시간 초과! 미완성 패를 회수하고 페널티 ${drawn}장을 받았습니다.`
       : `${player.name} 시간 초과! 타일 ${drawn}장을 뽑았습니다.`,
     'error'
   );
@@ -595,6 +598,7 @@ io.on('connection', (socket) => {
       playedFromRackIds: new Set(),
       recentHighlightIds: new Set(),
       consecutivePasses: 0,
+      turnSeq: 0,
       timeLeft: TURN_SECONDS,
       timerInterval: null,
       aiTimeout: null,
@@ -689,6 +693,7 @@ io.on('connection', (socket) => {
     room.board = createEmptyBoard();
     room.currentPlayerIndex = 0;
     room.consecutivePasses = 0;
+    room.turnSeq = 0;
     room.recentHighlightIds = new Set();
     room.winnerInfo = null;
 
