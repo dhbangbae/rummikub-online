@@ -455,7 +455,7 @@
   <div class="relative z-10 flex-1 flex items-stretch min-h-0 w-full px-1 sm:px-2 pb-1.5 gap-1 sm:gap-2">
 
     <!-- LEFT SIDEBAR: Player Avatars & 40s Circular Timer -->
-    <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-14 sm:w-[76px] z-20"></aside>
+    <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-20 sm:w-[110px] z-20"></aside>
 
     <!-- CENTER COLUMN: Board + Wooden Rack -->
     <div class="flex-1 min-w-0 flex flex-col items-center justify-between gap-1 min-h-0">
@@ -495,28 +495,28 @@
     </div>
 
     <!-- RIGHT SIDEBAR: 789/777 & Draw/Confirm (+) Pill -->
-    <aside class="flex flex-col items-center justify-end gap-2.5 pb-1 shrink-0 w-12 sm:w-[66px] z-20">
-      <div class="rk-pill-capsule w-full rounded-[24px] overflow-hidden flex flex-col">
+    <aside class="flex flex-col items-center justify-end gap-3 pb-1 shrink-0 w-16 sm:w-[88px] z-20">
+      <div class="rk-pill-capsule w-full rounded-[26px] overflow-hidden flex flex-col">
         <button id="btnSortRun" type="button"
-          class="w-full py-3 sm:py-4 flex items-center justify-center font-black text-sm sm:text-lg text-white hover:bg-white/10 active:scale-95 transition tracking-tight"
+          class="w-full py-3.5 sm:py-5 flex items-center justify-center font-black text-lg sm:text-2xl text-white hover:bg-white/10 active:scale-95 transition tracking-tight"
           title="789 연속 정렬 (같은 색 연속 숫자)">
           789
         </button>
         <div class="h-[1px] bg-blue-300/35 mx-2"></div>
         <button id="btnSortGroup" type="button"
-          class="w-full py-3 sm:py-4 flex items-center justify-center font-black text-sm sm:text-lg text-white hover:bg-white/10 active:scale-95 transition tracking-tight"
+          class="w-full py-3.5 sm:py-5 flex items-center justify-center font-black text-lg sm:text-2xl text-white hover:bg-white/10 active:scale-95 transition tracking-tight"
           title="777 숫자 정렬 (같은 숫자 다른 색)">
           777
         </button>
       </div>
 
       <button id="btnEndTurn" type="button"
-        class="rk-draw-pill w-full rounded-[28px] py-3 sm:py-4 flex flex-col items-center justify-between gap-2 text-white active:scale-95 transition min-h-[104px] sm:min-h-[132px]"
+        class="rk-draw-pill w-full rounded-[30px] py-3.5 sm:py-5 flex flex-col items-center justify-between gap-2 text-white active:scale-95 transition min-h-[126px] sm:min-h-[160px]"
         title="타일 뽑기 또는 턴 완료">
-        <span id="btnEndTurnSymbol" class="text-3xl sm:text-4xl font-light text-amber-300 leading-none mt-1">+</span>
-        <span id="btnEndTurnLabel" class="text-[9px] sm:text-[10px] font-bold text-blue-100/90 leading-tight text-center px-1">뽑기</span>
-        <div class="flex items-center gap-0.5 text-[11px] sm:text-xs font-extrabold text-blue-100/90">
-          <span class="opacity-75 text-[10px]">🂠</span>
+        <span id="btnEndTurnSymbol" class="text-4xl sm:text-5xl font-normal text-amber-300 leading-none mt-1">+</span>
+        <span id="btnEndTurnLabel" class="text-xs sm:text-base font-extrabold text-blue-100 leading-tight text-center px-1">뽑기</span>
+        <div class="flex items-center gap-1 text-sm sm:text-base font-black text-blue-100">
+          <span class="opacity-85 text-sm sm:text-base">🂠</span>
           <span id="poolCountBadge">106</span>
         </div>
       </button>
@@ -1248,303 +1248,31 @@
     }
 
     // ==================== COMPATIBLE FORWARD CHAIN & MADE SET ====================
-    function getBoardContiguousGroup(row, col) {
-      if (!state.board[row] || !state.board[row][col]) return [];
+    function getBoardContiguousGroup(row, col, board = state.board) {
+      if (!board[row] || !board[row][col]) return [];
       let cStart = col;
-      while (cStart > 0 && state.board[row][cStart - 1]) cStart--;
+      while (cStart > 0 && board[row][cStart - 1]) cStart--;
       let cEnd = col;
-      while (cEnd < GRID_COLS - 1 && state.board[row][cEnd + 1]) cEnd++;
+      while (cEnd < GRID_COLS - 1 && board[row][cEnd + 1]) cEnd++;
       const res = [];
-      for (let c = cStart; c <= cEnd; c++) res.push({ tile: state.board[row][c], row, col: c });
+      for (let c = cStart; c <= cEnd; c++) res.push({ tile: board[row][c], row, col: c });
       return res;
     }
 
     function getRackRowContiguousItems(rackIdx) {
-      if (!state.myRack[rackIdx]) return [];
-      const rowSize = Math.floor(state.myRack.length / 2);
-      const rowStart = rackIdx < rowSize ? 0 : rowSize;
-      const rowEnd = rowStart + rowSize - 1;
-      let cStart = rackIdx;
-      while (cStart > rowStart && state.myRack[cStart - 1]) cStart--;
-      let cEnd = rackIdx;
-      while (cEnd < rowEnd && state.myRack[cEnd + 1]) cEnd++;
-      const res = [];
-      for (let i = cStart; i <= cEnd; i++) res.push({ tile: state.myRack[i], idx: i });
-      return res;
-    }
-
-    function getCompatibleForwardChain(items, startIdx) {
-      if (!items || startIdx < 0 || startIdx >= items.length) return [];
-      const first = items[startIdx];
-      if (!first || !first.tile) return [];
-
-      if (first.tile.isJoker) {
-        if (startIdx + 1 >= items.length) return [first];
-        const nextChain = getCompatibleForwardChain(items, startIdx + 1);
-        return nextChain.length >= 2 && validateSet([first.tile, ...nextChain.map((x) => x.tile)]).valid
-          ? [first, ...nextChain]
-          : [first];
-      }
-
-      const runChain = [first];
-      let expectedNum = first.tile.num + 1;
-      for (let i = startIdx + 1; i < items.length; i++) {
-        const cur = items[i];
-        if (!cur || !cur.tile) break;
-        if (!cur.tile.isJoker && cur.tile.color === first.tile.color && cur.tile.num === expectedNum) {
-          runChain.push(cur);
-          expectedNum++;
-        } else if (
-          cur.tile.isJoker &&
-          expectedNum <= 13 &&
-          (
-            runChain.length >= 2 ||
-            (
-              i + 1 < items.length &&
-              items[i + 1]?.tile &&
-              !items[i + 1].tile.isJoker &&
-              items[i + 1].tile.color === first.tile.color &&
-              items[i + 1].tile.num === expectedNum + 1
-            )
-          )
-        ) {
-          runChain.push(cur);
-          expectedNum++;
-        } else {
-          break;
-        }
-      }
-
-      const groupChain = [first];
-      const usedColors = new Set([first.tile.color]);
-      for (let i = startIdx + 1; i < items.length && groupChain.length < 4; i++) {
-        const cur = items[i];
-        if (!cur || !cur.tile) break;
-        if (!cur.tile.isJoker && cur.tile.num === first.tile.num && !usedColors.has(cur.tile.color)) {
-          usedColors.add(cur.tile.color);
-          groupChain.push(cur);
-        } else if (cur.tile.isJoker && groupChain.length >= 2) {
-          groupChain.push(cur);
-        } else {
-          break;
-        }
-      }
-
-      return groupChain.length > runChain.length ? groupChain : runChain;
-    }
-
-    function findMadeSetForRackTile(rackIdx) {
-      if (!state.myRack[rackIdx]) return null;
-      const clicked = state.myRack[rackIdx];
-
-      // 1) 클릭한 자리에 실제로 나란히 붙어 있는 유효 세트를 최우선 선택 (엉뚱한 줄 패 선택 방지)
-      const contiguous = getRackRowContiguousItems(rackIdx);
-      const localPos = contiguous.findIndex((x) => x.idx === rackIdx);
-      if (localPos >= 0 && contiguous.length >= 3) {
-        const allTiles = contiguous.map((x) => x.tile);
-        if (validateSet(allTiles).valid) return allTiles;
-
-        const forward = getCompatibleForwardChain(contiguous, localPos).map((x) => x.tile);
-        if (forward.length >= 3 && validateSet(forward).valid) return forward;
-
-        for (let s = 0; s <= localPos; s++) {
-          for (let e = contiguous.length - 1; e >= localPos; e--) {
-            if (e - s + 1 < 3) continue;
-            const sub = contiguous.slice(s, e + 1).map((x) => x.tile);
-            if (validateSet(sub).valid) return sub;
-          }
-        }
-      }
-
-      // 2) 나란히 붙어 있지 않은 경우에만 받침대 전체에서 메이드 세트 탐색
-      const allRackTiles = getMyRackTiles();
-      const jokers = allRackTiles.filter((t) => t.isJoker && t.id !== clicked.id);
-      const candidates = [];
-
-      if (!clicked.isJoker) {
-        const groupTiles = [clicked];
-        const usedColors = new Set([clicked.color]);
-        for (const t of allRackTiles) {
-          if (!t.isJoker && t.id !== clicked.id && t.num === clicked.num && !usedColors.has(t.color)) {
-            usedColors.add(t.color);
-            groupTiles.push(t);
-          }
-        }
-        groupTiles.sort((a, b) => COLOR_ORDER[a.color] - COLOR_ORDER[b.color]);
-        if (groupTiles.length >= 3) {
-          const v = validateSet(groupTiles);
-          if (v.valid) candidates.push({ tiles: groupTiles, points: v.points, usesJoker: false });
-        } else if (groupTiles.length === 2 && jokers.length > 0) {
-          const wj = [...groupTiles, jokers[0]];
-          const v = validateSet(wj);
-          if (v.valid) candidates.push({ tiles: wj, points: v.points, usesJoker: true });
-        }
-
-        const byNum = new Map();
-        for (const t of allRackTiles) {
-          if (!t.isJoker && t.color === clicked.color) {
-            if (t.id === clicked.id || !byNum.has(t.num)) byNum.set(t.num, t);
-          }
-        }
-        let low = clicked.num;
-        while (low > 1 && byNum.has(low - 1)) low--;
-        let high = clicked.num;
-        while (high < 13 && byNum.has(high + 1)) high++;
-        const runTiles = [];
-        for (let n = low; n <= high; n++) runTiles.push(byNum.get(n));
-        if (runTiles.length >= 3) {
-          const v = validateSet(runTiles);
-          if (v.valid) candidates.push({ tiles: runTiles, points: v.points, usesJoker: false });
-        }
-      }
-
-      if (candidates.length === 0) return null;
-      candidates.sort((a, b) => (a.usesJoker !== b.usesJoker ? (a.usesJoker ? 1 : -1) : b.points - a.points));
-      return candidates[0].tiles;
-    }
-
-    // ==================== BOARD SPACE, AUTO-PUSH, INSERT & SPLIT ====================
-    function isAreaFreeOn(board, row, col, len, ignoreIds = new Set()) {
-      if (row < 0 || row >= GRID_ROWS || col < 0 || col + len > GRID_COLS) return false;
-      for (let i = 0; i < len; i++) {
-        const occ = board[row][col + i];
-        if (occ && !ignoreIds.has(occ.id)) return false;
-      }
-      return true;
-    }
-
-    function isAreaFreeOnBoard(row, col, len, ignoreIds = new Set()) {
-      return isAreaFreeOn(state.board, row, col, len, ignoreIds);
-    }
-
-    function findNearestEmptySpotOn(board, prefRow, prefCol, len, ignoreIds = new Set()) {
-      let bestWithGap = null;
-      let bestGapDist = Infinity;
-      let bestAny = null;
-      let bestAnyDist = Infinity;
-      for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c <= GRID_COLS - len; c++) {
-          if (!isAreaFreeOn(board, r, c, len, ignoreIds)) continue;
-          const dist = Math.hypot(c - prefCol, (r - prefRow) * 2.2);
-          const leftTile = c > 0 ? board[r][c - 1] : null;
-          const rightTile = c + len < GRID_COLS ? board[r][c + len] : null;
-          const leftClear = !leftTile || ignoreIds.has(leftTile.id);
-          const rightClear = !rightTile || ignoreIds.has(rightTile.id);
-          if (leftClear && rightClear && dist < bestGapDist) {
-            bestGapDist = dist;
-            bestWithGap = { row: r, col: c };
-          }
-          if (dist < bestAnyDist) {
-            bestAnyDist = dist;
-            bestAny = { row: r, col: c };
-          }
-        }
-      }
-      return bestWithGap || bestAny;
-    }
-
-    function findNearestEmptySpot(prefRow, prefCol, len, ignoreIds = new Set()) {
-      return findNearestEmptySpotOn(state.board, prefRow, prefCol, len, ignoreIds);
-    }
-
-    function collectBlockingGroupsInRange(row, cStart, cEnd, ignoreIds) {
-      const blockers = [];
-      const seenStarts = new Set();
-      const lo = Math.max(0, cStart);
-      const hi = Math.min(GRID_COLS - 1, cEnd);
-      for (let c = lo; c <= hi; c++) {
-        const t = state.board[row][c];
-        if (!t || ignoreIds.has(t.id)) continue;
-        let gStart = c;
-        while (gStart > 0 && state.board[row][gStart - 1] && !ignoreIds.has(state.board[row][gStart - 1].id)) gStart--;
-        if (seenStarts.has(gStart)) continue;
-        seenStarts.add(gStart);
-        let gEnd = c;
-        while (gEnd < GRID_COLS - 1 && state.board[row][gEnd + 1] && !ignoreIds.has(state.board[row][gEnd + 1].id)) gEnd++;
-        const tiles = [];
-        for (let k = gStart; k <= gEnd; k++) tiles.push(state.board[row][k]);
-        blockers.push({ row, startCol: gStart, endCol: gEnd, tiles });
-      }
-      return blockers;
-    }
-
-    function findAutoSplitForGroup(groupTiles, insertedTiles) {
-      if (!groupTiles || groupTiles.length < 4 || !insertedTiles || insertedTiles.length === 0) return null;
-      for (let k = 1; k < groupTiles.length; k++) {
-        const leftPart = groupTiles.slice(0, k);
-        const rightPart = groupTiles.slice(k);
-        const setA1 = [...leftPart, ...insertedTiles];
-        if (validateSet(setA1).valid && validateSet(rightPart).valid) return { setA: setA1, setB: rightPart };
-        const setB2 = [...insertedTiles, ...rightPart];
-        if (validateSet(leftPart).valid && validateSet(setB2).valid) return { setA: leftPart, setB: setB2 };
-      }
-      return null;
-    }
-
-    // 같은 숫자 3개(또는 2개) 사이에 똑같은 숫자(다른 색상/조커) 끼워넣기 판별
-    function findGroupInsertForGroup(groupTiles, insertedTiles, insertAtIdx = 1) {
-      if (!groupTiles || groupTiles.length < 2 || groupTiles.length > 3) return null;
-      if (!insertedTiles || insertedTiles.length === 0 || groupTiles.length + insertedTiles.length > 4) return null;
-      const combinedCheck = validateSet([...groupTiles, ...insertedTiles]);
-      if (!combinedCheck.valid || combinedCheck.type !== 'group') return null;
-      const clampedIdx = Math.max(1, Math.min(groupTiles.length, insertAtIdx));
-      const newTiles = [
-        ...groupTiles.slice(0, clampedIdx),
-        ...insertedTiles,
-        ...groupTiles.slice(clampedIdx),
-      ];
-      return { newTiles, insertIdx: clampedIdx };
-    }
-
-    // 보드 전체에 연속 빈 칸이 부족할 때 기존 세트들을 깔끔하게 압축 정렬해 공간 확보
-    function compactBoardToMakeSpace(baseBoard, neededLen, ignoreIds = new Set()) {
-      const cleaned = baseBoard.map((r) => r.map((t) => (t && !ignoreIds.has(t.id) ? t : null)));
-      const groups = getBoardGroups(cleaned);
-      const nextBoard = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
-      let curR = 0;
-      let curC = 0;
-
-      for (const g of groups) {
-        const len = g.tiles.length;
-        if (curC > 0 && curC + len > GRID_COLS) {
-          curR++;
-          curC = 0;
-        }
-        if (curR >= GRID_ROWS || curC + len > GRID_COLS) return null;
-        for (let i = 0; i < len; i++) nextBoard[curR][curC + i] = g.tiles[i];
-        curC += len + 1;
-        if (curC >= GRID_COLS) {
-          curR++;
-          curC = 0;
-        }
-      }
-
-      const spot = findNearestEmptySpotOn(nextBoard, Math.min(GRID_ROWS - 1, curR), curC, neededLen);
-      if (!spot) return null;
-      return { board: nextBoard, spot };
-    }
-
-    // 지정 위치(row, startCol..startCol+len-1)에 놓기 위해 방해되는 주변 패들을 자동으로 비켜주기
-    // removeIds: 이동 중인 패(보드에서 제거됨), keepIds: 붙이려는 대상 패(보드에 그대로 유지되어 덮어쓰기 방지)
-    function planPushBlockersAround(row, startCol, tilesToPlace, removeIds, keepIds = new Set()) {
-      const len = tilesToPlace.length;
-      if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
-
-      const ignoreForBlockers = new Set([...removeIds, ...keepIds]);
-      const blockers = collectBlockingGroupsInRange(
-        row,
-        Math.max(0, startCol - 1),
-        Math.min(GRID_COLS - 1, startCol + len),
-        ignoreForBlockers
-      );
-      const simBoard = state.board.map((r) => r.slice());
-
+// ... existing code ... -->
       // 이동 중인 패(removeIds)만 시뮬레이션 보드에서 제거 (keepIds는 그대로 유지!)
+      const removedSimSpots = [];
       for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
-          if (simBoard[r][c] && removeIds.has(simBoard[r][c].id)) simBoard[r][c] = null;
+          if (simBoard[r][c] && removeIds.has(simBoard[r][c].id)) {
+            simBoard[r][c] = null;
+            removedSimSpots.push({ row: r, col: c });
+          }
         }
       }
+      if (removedSimSpots.length === 1) closeGroupGapsOn(simBoard, removedSimSpots);
+
       for (const b of blockers) {
         for (let c = b.startCol; c <= b.endCol; c++) simBoard[b.row][c] = null;
       }
@@ -1621,7 +1349,9 @@
 
     function findMagneticBoardTarget(clientX, clientY, draggingTiles) {
       const vpRect = boardViewport.getBoundingClientRect();
-      if (clientX < vpRect.left - 24 || clientX > vpRect.right + 24 || clientY < vpRect.top - 24 || clientY > vpRect.bottom + 24) {
+      const rackRect = woodRack.getBoundingClientRect();
+      const maxBottomY = Math.max(vpRect.bottom + 24, rackRect.top + 8);
+      if (clientX < vpRect.left - 24 || clientX > vpRect.right + 24 || clientY < vpRect.top - 24 || clientY > maxBottomY) {
         return null;
       }
 
@@ -1821,14 +1551,14 @@
               isMagnet: false,
               isValidMerge: false,
             };
-          }
-        }
-        return null;
-      }
+      // 2. 자유 배치 (랙 바로 위 공간 포함, 공간 부족 시 자동 밀기/정리, 상관없는 패 옆은 차단)
+      const visMinCol = state.viewColStart;
+      const visMaxCol = Math.max(visMinCol, Math.min(GRID_COLS - len, state.viewColStart + state.viewCols - len));
+      const visMinRow = state.viewRowStart;
+      const visMaxRow = Math.min(GRID_ROWS - 1, state.viewRowStart + state.viewRows - 1);
 
-      // 2. 자유 배치 (공간 부족 시 자동 밀기/정리, 상관없는 패 옆은 차단)
-      let baseCol = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
-      const baseRow = Math.max(0, Math.min(GRID_ROWS - 1, Math.round(fRow)));
+      let baseCol = Math.max(visMinCol, Math.min(visMaxCol, Math.round(fCol)));
+      const baseRow = Math.max(visMinRow, Math.min(visMaxRow, Math.round(fRow)));
 
       // 반올림 오차로 옆 타일 칸에 겹칠 때 커서가 실제 가리키는 인접 빈 칸 우선 사용
       if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
@@ -1889,7 +1619,7 @@
 
     function findRackDropTarget(clientX, clientY) {
       const rackRect = woodRack.getBoundingClientRect();
-      if (clientX < rackRect.left - 18 || clientX > rackRect.right + 18 || clientY < rackRect.top - 6 || clientY > rackRect.bottom + 26) {
+      if (clientX < rackRect.left - 18 || clientX > rackRect.right + 18 || clientY < rackRect.top + 4 || clientY > rackRect.bottom + 26) {
         return null;
       }
       const slots = woodRack.querySelectorAll('.rack-slot');
@@ -2058,12 +1788,12 @@
         const av = AVATAR_STYLES[idx % AVATAR_STYLES.length];
 
         const seat = document.createElement('div');
-        seat.className = 'flex flex-col items-center gap-0.5';
+        seat.className = 'flex flex-col items-center gap-1';
         seat.innerHTML = `
-          <div class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''}">
-            <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-xl sm:text-2xl shadow-inner relative overflow-hidden">
+          <div class="relative w-14 h-14 sm:w-[70px] sm:h-[70px] rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''}">
+            <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-2xl sm:text-4xl shadow-inner relative overflow-hidden">
               <span class="${isCurr ? 'opacity-45' : ''}">${p.isAI ? av.emoji : '🧑'}</span>
-              ${isCurr ? `<span id="activeAvatarTimer" class="absolute inset-0 flex items-center justify-center text-lg sm:text-xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">${Math.max(0, state.timeLeft)}</span>` : ''}
+              ${isCurr ? `<span id="activeAvatarTimer" class="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">${Math.max(0, state.timeLeft)}</span>` : ''}
             </div>
             ${isCurr ? `
               <svg class="absolute -inset-1 w-[calc(100%+8px)] h-[calc(100%+8px)] -rotate-90 pointer-events-none" viewBox="0 0 60 60">
@@ -2071,12 +1801,12 @@
                 <circle id="activeAvatarRing" cx="30" cy="30" r="26" fill="none" stroke="${ringColor}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${dashOffset}" />
               </svg>
             ` : ''}
-            ${p.hasMelded ? '<span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 border border-white text-[10px] font-black text-slate-950 flex items-center justify-center shadow" title="30점 첫 등록 완료">★</span>' : ''}
-            ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-rose-500 border border-white text-[9px] flex items-center justify-center" title="연결 끊김">!</span>' : ''}
+            ${p.hasMelded ? '<span class="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-amber-400 border border-white text-xs font-black text-slate-950 flex items-center justify-center shadow" title="30점 첫 등록 완료">★</span>' : ''}
+            ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-rose-500 border border-white text-[10px] font-bold flex items-center justify-center" title="연결 끊김">!</span>' : ''}
           </div>
-          <div class="px-1.5 py-0.5 rounded bg-slate-950/70 border border-blue-400/25 text-[10px] font-bold text-blue-100 flex items-center gap-1 max-w-full shadow">
-            <span class="truncate max-w-[36px] sm:max-w-[46px]">${p.name}</span>
-            <span class="text-amber-300 font-black">${p.tileCount}</span>
+          <div class="px-2 py-1 rounded-lg bg-slate-950/75 border border-blue-400/35 text-xs sm:text-sm font-extrabold text-blue-100 flex items-center gap-1.5 max-w-full shadow">
+            <span class="truncate max-w-[52px] sm:max-w-[74px]">${p.name}</span>
+            <span class="text-amber-300 font-black text-sm sm:text-base">${p.tileCount}</span>
           </div>
         `;
         playersBar.appendChild(seat);
@@ -2214,7 +1944,7 @@
       const rowSize = Math.floor(state.myRack.length / 2);
 
       const isNarrow = window.innerWidth < 640;
-      const sideSpace = isNarrow ? 126 : 196;
+      const sideSpace = isNarrow ? 164 : 230;
       const availRackW = Math.max(180, window.innerWidth - sideSpace);
       const maxTileH = Math.max(36, Math.min(72, Math.floor(window.innerHeight * 0.115)));
       const maxTileWByH = Math.floor(maxTileH / 1.38);
@@ -2265,21 +1995,21 @@
       btnEndTurn.classList.remove('ready-confirm', 'invalid-state');
       if (!myTurn) {
         btnEndTurnSymbol.textContent = '…';
-        btnEndTurnSymbol.className = 'text-3xl font-black text-blue-200/60 leading-none mt-1';
+        btnEndTurnSymbol.className = 'text-4xl sm:text-5xl font-black text-blue-200/60 leading-none mt-1';
         btnEndTurnLabel.textContent = '대기';
-      } else if (evalRes && evalRes.playedCount === 0 && !state.hasBoardChanged) {
+      } else if (evalRes && evalRes.playedCount === 0 && evalRes.allValid) {
         btnEndTurnSymbol.textContent = '+';
-        btnEndTurnSymbol.className = 'text-3xl sm:text-4xl font-light text-amber-300 leading-none mt-1';
+        btnEndTurnSymbol.className = 'text-4xl sm:text-5xl font-normal text-amber-300 leading-none mt-1';
         btnEndTurnLabel.textContent = state.poolCount > 0 ? '뽑기' : '패스';
       } else if (evalRes && evalRes.canConfirm) {
         btnEndTurn.classList.add('ready-confirm');
         btnEndTurnSymbol.textContent = '✓';
-        btnEndTurnSymbol.className = 'text-3xl sm:text-4xl font-black text-white leading-none mt-1';
+        btnEndTurnSymbol.className = 'text-4xl sm:text-5xl font-black text-white leading-none mt-1';
         btnEndTurnLabel.textContent = '완료';
       } else {
         btnEndTurn.classList.add('invalid-state');
         btnEndTurnSymbol.textContent = '!';
-        btnEndTurnSymbol.className = 'text-3xl sm:text-4xl font-black text-white leading-none mt-1';
+        btnEndTurnSymbol.className = 'text-4xl sm:text-5xl font-black text-white leading-none mt-1';
         btnEndTurnLabel.textContent = '확인';
       }
 
@@ -2773,21 +2503,28 @@
     }
 
     // ==================== TILE MOVEMENT ====================
-    function closeGroupGapsOnBoard(removedSpots) {
+    function closeGroupGapsOn(board, removedSpots) {
+      const mergedIds = new Set();
       for (const { row, col } of removedSpots) {
-        if (state.board[row][col]) continue;
-        const leftGrp = col > 0 && state.board[row][col - 1] ? getBoardContiguousGroup(row, col - 1) : [];
-        const rightGrp = col + 1 < GRID_COLS && state.board[row][col + 1] ? getBoardContiguousGroup(row, col + 1) : [];
+        if (board[row][col]) continue;
+        const leftGrp = col > 0 && board[row][col - 1] ? getBoardContiguousGroup(row, col - 1, board) : [];
+        const rightGrp = col + 1 < GRID_COLS && board[row][col + 1] ? getBoardContiguousGroup(row, col + 1, board) : [];
         if (leftGrp.length === 0 || rightGrp.length === 0) continue;
         const combined = [...leftGrp.map((x) => x.tile), ...rightGrp.map((x) => x.tile)];
         const check = validateSet(combined);
         if (check.valid && check.type === 'group') {
           for (const item of rightGrp) {
-            state.board[row][item.col - 1] = item.tile;
-            state.board[row][item.col] = null;
+            board[row][item.col - 1] = item.tile;
+            board[row][item.col] = null;
           }
+          combined.forEach((t) => mergedIds.add(t.id));
         }
       }
+      return mergedIds;
+    }
+
+    function closeGroupGapsOnBoard(removedSpots) {
+      return closeGroupGapsOn(state.board, removedSpots);
     }
 
     function removeTilesFromCurrentLocations(tileIds) {
