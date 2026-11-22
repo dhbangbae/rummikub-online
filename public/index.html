@@ -43,6 +43,7 @@
       background: #071b42;
       color: #f8fafc;
       overscroll-behavior: none;
+      touch-action: none;
     }
 
     /* Classic Royal Blue Velvet Felt Table */
@@ -1524,19 +1525,33 @@
     }
 
     // 지정 위치(row, startCol..startCol+len-1)에 놓기 위해 방해되는 주변 패들을 자동으로 비켜주기
-    function planPushBlockersAround(row, startCol, tilesToPlace, ignoreIds) {
+    // removeIds: 이동 중인 패(보드에서 제거됨), keepIds: 붙이려는 대상 패(보드에 그대로 유지되어 덮어쓰기 방지)
+    function planPushBlockersAround(row, startCol, tilesToPlace, removeIds, keepIds = new Set()) {
       const len = tilesToPlace.length;
       if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
 
-      const blockers = collectBlockingGroupsInRange(row, Math.max(0, startCol - 1), Math.min(GRID_COLS - 1, startCol + len), ignoreIds);
+      const ignoreForBlockers = new Set([...removeIds, ...keepIds]);
+      const blockers = collectBlockingGroupsInRange(
+        row,
+        Math.max(0, startCol - 1),
+        Math.min(GRID_COLS - 1, startCol + len),
+        ignoreForBlockers
+      );
       const simBoard = state.board.map((r) => r.slice());
+
+      // 이동 중인 패(removeIds)만 시뮬레이션 보드에서 제거 (keepIds는 그대로 유지!)
       for (let r = 0; r < GRID_ROWS; r++) {
         for (let c = 0; c < GRID_COLS; c++) {
-          if (simBoard[r][c] && ignoreIds.has(simBoard[r][c].id)) simBoard[r][c] = null;
+          if (simBoard[r][c] && removeIds.has(simBoard[r][c].id)) simBoard[r][c] = null;
         }
       }
       for (const b of blockers) {
         for (let c = b.startCol; c <= b.endCol; c++) simBoard[b.row][c] = null;
+      }
+
+      // 놓으려는 자리가 keepIds 등 다른 패와 겹치면 불가
+      for (let i = 0; i < len; i++) {
+        if (simBoard[row][startCol + i]) return null;
       }
       for (let i = 0; i < len; i++) simBoard[row][startCol + i] = tilesToPlace[i];
 
@@ -1565,7 +1580,7 @@
         for (let i = 0; i < bLen; i++) simBoard[dest.row][dest.col + i] = b.tiles[i];
         moves.push({ blocker: b, dest });
       }
-      return { row, col: startCol, pushMoves: moves };
+      return { row, col: startCol, pushMoves: moves, nextBoard: simBoard };
     }
 
     function planGroupInsertPlacement(row, gStart, gEnd, newTiles, ignoreIds) {
@@ -1593,7 +1608,7 @@
       if (leftStart >= 0) candidateCols.push(leftStart);
       for (const col of candidateCols) {
         const pushed = planPushBlockersAround(row, col, newTiles, groupIgnore);
-        if (pushed) return { mode: 'push', row, col: pushed.col, pushMoves: pushed.pushMoves };
+        if (pushed) return { mode: 'push', row, col: pushed.col, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
       }
 
       const near = findNearestEmptySpotOn(state.board, row, gStart, len, groupIgnore);
@@ -1706,19 +1721,19 @@
                     bestDist = dist;
                     bestMagnet = { row: r, col: rightCol, isValidMerge: adj.validMerge };
                   } else if (!adj.compatible && dist < bestDist) {
-                    const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
-                    const pushed = planPushBlockersAround(r, rightCol, draggingTiles, targetIgnore);
+                    const keepSet = new Set(gTiles.map((x) => x.id));
+                    const pushed = planPushBlockersAround(r, rightCol, draggingTiles, ignoreIds, keepSet);
                     if (pushed && pushed.pushMoves.length > 0) {
                       bestDist = dist;
-                      bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves };
+                      bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
                     }
                   }
                 } else if (dist < bestDist) {
-                  const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
-                  const pushed = planPushBlockersAround(r, rightCol, draggingTiles, targetIgnore);
+                  const keepSet = new Set(gTiles.map((x) => x.id));
+                  const pushed = planPushBlockersAround(r, rightCol, draggingTiles, ignoreIds, keepSet);
                   if (pushed && pushed.pushMoves.length > 0) {
                     bestDist = dist;
-                    bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves };
+                    bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
                   }
                 }
               }
@@ -1737,19 +1752,19 @@
                     bestDist = dist;
                     bestMagnet = { row: r, col: leftCol, isValidMerge: adj.validMerge };
                   } else if (!adj.compatible && dist < bestDist) {
-                    const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
-                    const pushed = planPushBlockersAround(r, leftCol, draggingTiles, targetIgnore);
+                    const keepSet = new Set(gTiles.map((x) => x.id));
+                    const pushed = planPushBlockersAround(r, leftCol, draggingTiles, ignoreIds, keepSet);
                     if (pushed && pushed.pushMoves.length > 0) {
                       bestDist = dist;
-                      bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves };
+                      bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
                     }
                   }
                 } else if (dist < bestDist) {
-                  const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
-                  const pushed = planPushBlockersAround(r, leftCol, draggingTiles, targetIgnore);
+                  const keepSet = new Set(gTiles.map((x) => x.id));
+                  const pushed = planPushBlockersAround(r, leftCol, draggingTiles, ignoreIds, keepSet);
                   if (pushed && pushed.pushMoves.length > 0) {
                     bestDist = dist;
-                    bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves };
+                    bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
                   }
                 }
               } else if (leftCol < 0 && Math.abs(fCol - 0) <= MAGNET_COL_THRESHOLD) {
@@ -1786,6 +1801,7 @@
           isMagnet: true,
           isValidMerge: bestMagnet.isValidMerge,
           pushMoves: bestMagnet.pushMoves || null,
+          nextBoard: bestMagnet.nextBoard || null,
           shiftTargetRight: bestMagnet.shiftTargetRight || null,
         };
       }
@@ -1811,9 +1827,28 @@
       }
 
       // 2. 자유 배치 (공간 부족 시 자동 밀기/정리, 상관없는 패 옆은 차단)
-      const baseCol = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
+      let baseCol = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
       const baseRow = Math.max(0, Math.min(GRID_ROWS - 1, Math.round(fRow)));
+
+      // 반올림 오차로 옆 타일 칸에 겹칠 때 커서가 실제 가리키는 인접 빈 칸 우선 사용
       if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
+        const altCols = [
+          Math.max(0, Math.min(GRID_COLS - len, Math.floor(fCol))),
+          Math.max(0, Math.min(GRID_COLS - len, Math.ceil(fCol))),
+        ];
+        for (const ac of altCols) {
+          if (isAreaFreeOnBoard(baseRow, ac, len, ignoreIds)) {
+            baseCol = ac;
+            break;
+          }
+        }
+      }
+
+      if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
+        const near = findNearestEmptySpotOn(state.board, baseRow, baseCol, len, ignoreIds);
+        if (near && Math.hypot(near.col - baseCol, (near.row - baseRow) * 2) <= 2.5) {
+          return { type: 'board', row: near.row, col: near.col, isMagnet: false, isValidMerge: false, autoMadeSpace: true };
+        }
         const pushed = planPushBlockersAround(baseRow, baseCol, draggingTiles, ignoreIds);
         if (pushed) {
           return {
@@ -1823,10 +1858,10 @@
             isMagnet: false,
             isValidMerge: false,
             pushMoves: pushed.pushMoves,
+            nextBoard: pushed.nextBoard,
             autoMadeSpace: true,
           };
         }
-        const near = findNearestEmptySpotOn(state.board, baseRow, baseCol, len, ignoreIds);
         if (near) {
           return { type: 'board', row: near.row, col: near.col, isMagnet: false, isValidMerge: false, autoMadeSpace: true };
         }
@@ -2622,8 +2657,8 @@
 
     function onGlobalPointerCancel(e) {
       if (!interact.active || !isMatchingPointer(e)) return;
-      // 마우스 왼쪽 버튼이 여전히 눌려 있는 상태의 브라우저 임의 pointercancel 무시
-      if (interact.pointerType === 'mouse' && (e.buttons & 1) === 1) return;
+      // 마우스 드래그 중에는 브라우저 임의 pointercancel을 절대 드롭 처리하지 않음 (실제 pointerup/mouseup에서만 종료)
+      if (interact.pointerType === 'mouse') return;
       onGlobalPointerUp(e);
     }
 
@@ -2782,22 +2817,17 @@
         state.board = plan.compactedBoard;
         for (let i = 0; i < newTiles.length; i++) state.board[plan.row][plan.col + i] = newTiles[i];
         showToast('자리를 자동 확보해 같은 숫자 그룹에 끼워 넣었습니다!', 'success');
+      } else if (plan.mode === 'push' && plan.nextBoard) {
+        state.board = plan.nextBoard;
+        if (Array.isArray(plan.pushMoves)) {
+          for (const m of plan.pushMoves) {
+            m.blocker.tiles.forEach((t) => animatedIds.add(t.id));
+          }
+        }
+        showToast('자리를 자동 확보해 같은 숫자 그룹에 끼워 넣었습니다!', 'success');
       } else {
         for (let c = groupStart; c <= groupEnd; c++) state.board[row][c] = null;
-        if (plan.mode === 'push' && Array.isArray(plan.pushMoves)) {
-          for (const m of plan.pushMoves) {
-            for (let c = m.blocker.startCol; c <= m.blocker.endCol; c++) state.board[m.blocker.row][c] = null;
-          }
-        }
         for (let i = 0; i < newTiles.length; i++) state.board[plan.row][plan.col + i] = newTiles[i];
-        if (plan.mode === 'push' && Array.isArray(plan.pushMoves)) {
-          for (const m of plan.pushMoves) {
-            for (let i = 0; i < m.blocker.tiles.length; i++) {
-              state.board[m.dest.row][m.dest.col + i] = m.blocker.tiles[i];
-              animatedIds.add(m.blocker.tiles[i].id);
-            }
-          }
-        }
         showToast(
           plan.mode === 'inplace'
             ? '같은 숫자 그룹 사이에 끼워 넣었습니다!'
@@ -2859,19 +2889,35 @@
     function moveTilesToBoard(tiles, row, col, isMagnet, snapTarget = null) {
       const ids = new Set(tiles.map((t) => t.id));
 
-      if (snapTarget && Array.isArray(snapTarget.pushMoves) && snapTarget.pushMoves.length > 0) {
-        removeTilesFromCurrentLocations(ids);
-        const animatedIds = new Set(ids);
-
-        for (const m of snapTarget.pushMoves) {
-          for (let c = m.blocker.startCol; c <= m.blocker.endCol; c++) state.board[m.blocker.row][c] = null;
-        }
-        for (let i = 0; i < tiles.length; i++) state.board[row][col + i] = tiles[i];
-        for (const m of snapTarget.pushMoves) {
-          for (let i = 0; i < m.blocker.tiles.length; i++) {
-            state.board[m.dest.row][m.dest.col + i] = m.blocker.tiles[i];
-            animatedIds.add(m.blocker.tiles[i].id);
+      if (snapTarget && Array.isArray(snapTarget.pushMoves) && snapTarget.pushMoves.length > 0 && snapTarget.nextBoard) {
+        // 보드 타일 유실/덮어쓰기 방지 검증 후 적용
+        const beforeBoardIds = new Set();
+        for (let r = 0; r < GRID_ROWS; r++) {
+          for (let c = 0; c < GRID_COLS; c++) {
+            if (state.board[r][c]) beforeBoardIds.add(state.board[r][c].id);
           }
+        }
+        const expectedIds = new Set([...beforeBoardIds, ...ids]);
+        const nextIds = new Set();
+        for (let r = 0; r < GRID_ROWS; r++) {
+          for (let c = 0; c < GRID_COLS; c++) {
+            if (snapTarget.nextBoard[r][c]) nextIds.add(snapTarget.nextBoard[r][c].id);
+          }
+        }
+        if (nextIds.size !== expectedIds.size) {
+          playErrorBuzz();
+          syncSelectionVisuals();
+          return;
+        }
+
+        for (let i = 0; i < state.myRack.length; i++) {
+          if (state.myRack[i] && ids.has(state.myRack[i].id)) state.myRack[i] = null;
+        }
+        state.board = snapTarget.nextBoard;
+
+        const animatedIds = new Set(ids);
+        for (const m of snapTarget.pushMoves) {
+          m.blocker.tiles.forEach((t) => animatedIds.add(t.id));
         }
 
         playClack(true);
@@ -3298,6 +3344,10 @@
 
     document.addEventListener('selectstart', (e) => {
       if (interact.active) e.preventDefault();
+    });
+
+    document.addEventListener('dragstart', (e) => {
+      e.preventDefault();
     });
 
     window.addEventListener('blur', () => {
