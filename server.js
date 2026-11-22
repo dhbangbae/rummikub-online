@@ -415,6 +415,8 @@ function startTurn(room) {
   };
   room.playedFromRackIds = new Set(getRackTiles(player).map((t) => t.id));
   room.timeLeft = TURN_SECONDS;
+  room.turnDeadline = Date.now() + TURN_SECONDS * 1000;
+  room.handlingTimeout = false;
 
   io.to(room.code).emit('game:remoteDrag', { active: false });
   broadcastRoom(room);
@@ -431,19 +433,121 @@ function startTurn(room) {
   }
 
   room.timerInterval = setInterval(() => {
-    if (room.phase !== 'playing') {
-      clearRoomTimers(room);
-      return;
-    }
-    room.timeLeft--;
-    broadcastTimer(room);
-    if (room.timeLeft <= 0) {
-      handleTurnTimeout(room);
+    try {
+      if (room.phase !== 'playing') {
+        clearRoomTimers(room);
+        return;
+      }
+      const remaining = Math.max(0, Math.ceil((room.turnDeadline - Date.now()) / 1000));
+      room.timeLeft = remaining;
+      broadcastTimer(room);
+      if (remaining <= 0) {
+        handleTurnTimeout(room);
+      }
+    } catch (err) {
+      console.error('[TimerError]', err);
     }
   }, 1000);
 
   if (player.isAI) {
-    room.aiTimeout = setTimeout(() => executeAITurn(room), 1100);
+    room.aiTimeout = setTimeout(() => {
+      try {
+        executeAITurn(room);
+      } catch (err) {
+        console.error('[AIError]', err);
+        if (room.phase === 'playing') {
+          if (room.pool.length > 0) drawTileFromPool(room, player);
+          advanceToNextPlayer(room);
+        }
+      }
+    }, 1100);
+  }
+}
+
+function handleTurnTimeout(room) {
+  if (room.handlingTimeout) return;
+  room.handlingTimeout = true;
+  try {
+    clearRoomTimers(room);
+    const player = room.players[room.currentPlayerIndex];
+    if (!player || room.phase !== 'playing') return;
+
+    const evalRes = evaluateTurnState(room);
+    if (evalRes.canConfirm) {
+      confirmTurnSuccess(room, { msg: `${player.name} 시간 종료 — 유효한 배치가 자동 확정되었습니다.`, tone: 'success' });
+      return;
+    }
+
+    // 첫 등록 전(!player.hasMelded): 메이드가 안 된 패나 총합 30점 미만 패를 내려놓은 경우 즉시 자동 회수하고 1장 받기
+    if (!player.hasMelded) {
+      const hadChanges = hasBoardChangedFromSnapshot(room) || evalRes.playedCount > 0;
+      if (hadChanges && room.turnSnapshot) {
+        room.board = cloneBoard(room.turnSnapshot.board);
+        player.rack = cloneRack(room.turnSnapshot.rack);
+      }
+
+      const drawn = room.pool.length > 0 && drawTileFromPool(room, player) ? 1 : 0;
+      const msg = hadChanges
+        ? `${player.name} 시간 초과! 첫 등록 미완성/30점 미만 패를 자동 회수하고 ${drawn}장을 받았습니다.`
+        : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`;
+
+      room.consecutivePasses++;
+      advanceToNextPlayer(room, { msg, tone: 'error' });
+      return;
+    }
+
+    const groups = getBoardGroups(room.board);
+    const hasInvalidGroup = groups.some((g) => !g.valid);
+    let keptMadeOnBoard = false;
+    let hasUnresolvableOldBreak = false;
+
+    if (hasInvalidGroup) {
+      for (const g of groups) {
+        if (!g.valid) {
+          if (g.tiles.every((t) => room.playedFromRackIds.has(t.id))) {
+            for (let c = g.startCol; c <= g.endCol; c++) {
+              const t = room.board[g.row][c];
+              if (t) {
+                room.board[g.row][c] = null;
+                addTileToRack(player, t);
+              }
+            }
+          } else {
+            hasUnresolvableOldBreak = true;
+          }
+        }
+      }
+      if (hasUnresolvableOldBreak) {
+        room.board = cloneBoard(room.turnSnapshot.board);
+        player.rack = cloneRack(room.turnSnapshot.rack);
+      } else {
+        keptMadeOnBoard = hasBoardChangedFromSnapshot(room);
+      }
+    } else {
+      keptMadeOnBoard = hasBoardChangedFromSnapshot(room);
+    }
+
+    const penalty = hasInvalidGroup ? 3 : 1;
+    let drawn = 0;
+    for (let i = 0; i < penalty && room.pool.length > 0; i++) {
+      if (drawTileFromPool(room, player)) drawn++;
+    }
+
+    const msg = hasInvalidGroup
+      ? `${player.name} 시간 초과! 미완성 패를 회수하고 페널티 ${drawn}장을 받았습니다.`
+      : keptMadeOnBoard
+        ? `${player.name} 시간 초과! 메이드 패는 유지되고 강제로 ${drawn}장을 받았습니다.`
+        : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`;
+
+    room.consecutivePasses++;
+    advanceToNextPlayer(room, { msg, tone: 'error' });
+  } catch (err) {
+    console.error('[TimeoutError]', err);
+    if (room.phase === 'playing') {
+      advanceToNextPlayer(room);
+    }
+  } finally {
+    room.handlingTimeout = false;
   }
 }
 
@@ -651,6 +755,7 @@ function triggerGameOver(room, winner, subtitle, precomputed = null) {
 
   room.gameOverData = {
     winnerName: result.winner.name,
+    winnerSessionId: result.winner.sessionId,
     subtitle,
     minSum: result.minSum,
     totalLoserPenalty: result.totalLoserPenalty,
@@ -1073,6 +1178,42 @@ io.on('connection', (socket) => {
 
     const res = startGameInRoom(room, Boolean(fillWithAI));
     if (res.error) return cb(res);
+    cb({ ok: true });
+  });
+
+  // 네트워크 순단·탭 전환 후 자동 재동기화 및 멈춘 타이머 복구
+  socket.on('room:resync', ({ code, sessionId } = {}, cb = () => {}) => {
+    const targetCode = String(code || socket.data.roomCode || '').replace(/\D/g, '').slice(0, 4);
+    const sid = String(sessionId || socket.data.sessionId || '');
+    const room = rooms.get(targetCode);
+    if (!room) return cb({ error: '방을 찾을 수 없습니다.' });
+
+    const player = room.players.find((p) => p.sessionId === sid);
+    if (!player) return cb({ error: '방 참가자가 아닙니다.' });
+
+    player.socketId = socket.id;
+    player.connected = true;
+    socket.data.roomCode = targetCode;
+    socket.data.sessionId = sid;
+    socket.join(targetCode);
+
+    if (room.cleanupTimeout) {
+      clearTimeout(room.cleanupTimeout);
+      room.cleanupTimeout = null;
+    }
+
+    // 혹시 타이머가 멈춘 상태라면 즉시 복구
+    if (room.phase === 'playing' && !room.timerInterval) {
+      startTurn(room);
+    } else if (room.phase === 'playing' && room.turnDeadline) {
+      room.timeLeft = Math.max(0, Math.ceil((room.turnDeadline - Date.now()) / 1000));
+    }
+
+    socket.emit('room:state', buildRoomPayloadFor(room, sid));
+    socket.emit('game:timer', {
+      timeLeft: room.timeLeft,
+      currentPlayerIndex: room.currentPlayerIndex,
+    });
     cb({ ok: true });
   });
 
