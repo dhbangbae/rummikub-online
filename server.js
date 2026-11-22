@@ -88,6 +88,7 @@ function drawTileFromPool(room, player) {
   if (room.pool.length === 0 && room.finalRoundTurnsLeft === null && !room.finalRoundJustTriggered) {
     room.finalRoundJustTriggered = true;
     room.finalRoundTriggerName = player.name;
+    room.finalRoundTriggerSessionId = player.sessionId;
   }
   return tile;
 }
@@ -380,6 +381,7 @@ function startGameInRoom(room, fillWithAI = false) {
   room.finalRoundJustTriggered = false;
   room.finalRoundTurnsLeft = null;
   room.finalRoundTriggerName = null;
+  room.finalRoundTriggerSessionId = null;
   room.recentAITileIds = new Set();
   room.gameOverData = null;
 
@@ -410,6 +412,13 @@ function startTurn(room) {
 
   io.to(room.code).emit('game:remoteDrag', { active: false });
   broadcastRoom(room);
+
+  if (room.finalRoundTurnsLeft === 1 && player.sessionId === room.finalRoundTriggerSessionId) {
+    io.to(room.code).emit('room:toast', {
+      msg: `🔥 마지막 카드를 뽑은 ${player.name}님의 마지막 차례입니다! 턴 종료 시 점수로 등수를 계산합니다.`,
+      tone: 'info',
+    });
+  }
 
   if (!player.isAI && player.socketId) {
     io.to(player.socketId).emit('game:yourTurn', { timeLeft: TURN_SECONDS });
@@ -530,9 +539,10 @@ function advanceToNextPlayer(room, toast = null) {
 
   if (room.finalRoundJustTriggered) {
     room.finalRoundJustTriggered = false;
+    // 다음 사람부터 1바퀴 돌아 마지막 카드를 뽑은 사람 차례까지 진행(총 인원수만큼 턴)
     room.finalRoundTurnsLeft = room.players.length;
     toast = {
-      msg: `더미 소진! 마지막 패를 뽑은 ${room.finalRoundTriggerName}님 차례까지 한 바퀴 더 돌고 점수로 승부합니다!`,
+      msg: `더미 소진! 다음 사람부터 한 바퀴 돌아 마지막 카드를 뽑은 ${room.finalRoundTriggerName}님 차례가 끝나면 점수로 등수를 계산합니다.`,
       tone: 'info',
     };
   } else if (room.finalRoundTurnsLeft !== null) {
@@ -599,6 +609,15 @@ function computeFinalScores(room, forcedWinnerSessionId = null) {
   if (winnerRow) winnerRow.adjustedScore = totalWinnerGain;
 
   rows.sort((a, b) => (a.isWinner !== b.isWinner ? (a.isWinner ? -1 : 1) : b.adjustedScore - a.adjustedScore));
+
+  // 등수 계산 (동점 시 같은 등수 부여)
+  let currentRank = 1;
+  rows.forEach((r, idx) => {
+    if (idx > 0 && r.adjustedScore < rows[idx - 1].adjustedScore) {
+      currentRank = idx + 1;
+    }
+    r.rank = currentRank;
+  });
 
   return {
     winner: winnerEntry.player,
@@ -967,6 +986,7 @@ io.on('connection', (socket) => {
       finalRoundJustTriggered: false,
       finalRoundTurnsLeft: null,
       finalRoundTriggerName: null,
+      finalRoundTriggerSessionId: null,
       timeLeft: TURN_SECONDS,
       timerInterval: null,
       aiTimeout: null,
