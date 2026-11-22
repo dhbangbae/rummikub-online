@@ -341,6 +341,10 @@ function clearRoomTimers(room) {
     clearTimeout(room.aiTimeout);
     room.aiTimeout = null;
   }
+  if (Array.isArray(room.aiStepTimeouts)) {
+    room.aiStepTimeouts.forEach((t) => clearTimeout(t));
+    room.aiStepTimeouts = [];
+  }
 }
 
 function startGameInRoom(room, fillWithAI = false) {
@@ -404,6 +408,7 @@ function startTurn(room) {
   room.playedFromRackIds = new Set(getRackTiles(player).map((t) => t.id));
   room.timeLeft = TURN_SECONDS;
 
+  io.to(room.code).emit('game:remoteDrag', { active: false });
   broadcastRoom(room);
 
   if (!player.isAI && player.socketId) {
@@ -716,7 +721,6 @@ function executeAITurn(room) {
   if (!ai || !ai.isAI || room.phase !== 'playing') return;
 
   const rackTiles = getRackTiles(ai);
-  const placedIds = new Set();
   const candidates = findCandidateSetsFromRack(rackTiles);
   const chosenSets = [];
   const usedIds = new Set();
@@ -729,70 +733,68 @@ function executeAITurn(room) {
     totalPts += c.points;
   }
 
+  // 시뮬레이션 보드로 이번 턴에 AI가 놓을 단계(steps)를 먼저 계산한 뒤, 한 세트씩 실시간으로 내려놓기
+  const simBoard = cloneBoard(room.board);
+  const steps = [];
+  const placedIds = new Set();
+
   if (!ai.hasMelded) {
     if (totalPts >= 30) {
       let ok = true;
       for (const s of chosenSets) {
-        const spot = findEmptySpotOnBoard(room.board, s.tiles.length);
+        const spot = findEmptySpotOnBoard(simBoard, s.tiles.length);
         if (!spot) {
           ok = false;
           break;
         }
         for (let i = 0; i < s.tiles.length; i++) {
-          room.board[spot.row][spot.col + i] = s.tiles[i];
+          simBoard[spot.row][spot.col + i] = s.tiles[i];
           placedIds.add(s.tiles[i].id);
         }
+        steps.push({ row: spot.row, col: spot.col, tiles: s.tiles });
       }
-      if (ok && placedIds.size > 0) {
-        ai.rack = ai.rack.map((t) => (t && placedIds.has(t.id) ? null : t));
-        ai.hasMelded = true;
-        room.recentAITileIds = placedIds;
-        room.consecutivePasses = 0;
-        if (getRackTiles(ai).length === 0) {
-          triggerGameOver(room, ai, `${ai.name} 승리!`);
-          return;
-        }
-        advanceToNextPlayer(room, { msg: `${ai.name}이(가) ${totalPts}점으로 첫 등록했습니다!`, tone: 'success' });
-        return;
-      } else {
-        room.board = cloneBoard(room.turnSnapshot.board);
+      if (!ok) {
+        steps.length = 0;
         placedIds.clear();
       }
     }
   } else {
     for (const s of chosenSets) {
-      const spot = findEmptySpotOnBoard(room.board, s.tiles.length);
+      const spot = findEmptySpotOnBoard(simBoard, s.tiles.length);
       if (spot) {
         for (let i = 0; i < s.tiles.length; i++) {
-          room.board[spot.row][spot.col + i] = s.tiles[i];
+          simBoard[spot.row][spot.col + i] = s.tiles[i];
           placedIds.add(s.tiles[i].id);
         }
+        steps.push({ row: spot.row, col: spot.col, tiles: s.tiles });
       }
     }
     let progress = true;
     while (progress) {
       progress = false;
       const remaining = getRackTiles(ai).filter((t) => !placedIds.has(t.id));
-      const groups = getBoardGroups(room.board);
+      const groups = getBoardGroups(simBoard);
       for (const tile of remaining) {
         if (tile.isJoker) continue;
         let attached = false;
         for (const g of groups) {
-          if (g.endCol + 1 < GRID_COLS && !room.board[g.row][g.endCol + 1]) {
-            const rightEmpty = g.endCol + 2 >= GRID_COLS || !room.board[g.row][g.endCol + 2];
+          if (g.endCol + 1 < GRID_COLS && !simBoard[g.row][g.endCol + 1]) {
+            const rightEmpty = g.endCol + 2 >= GRID_COLS || !simBoard[g.row][g.endCol + 2];
             if (rightEmpty && validateSet([...g.tiles, tile]).valid) {
-              room.board[g.row][g.endCol + 1] = tile;
+              simBoard[g.row][g.endCol + 1] = tile;
               placedIds.add(tile.id);
+              steps.push({ row: g.row, col: g.endCol + 1, tiles: [tile] });
               attached = true;
               progress = true;
               break;
             }
           }
-          if (g.startCol - 1 >= 0 && !room.board[g.row][g.startCol - 1]) {
-            const leftEmpty = g.startCol - 2 < 0 || !room.board[g.row][g.startCol - 2];
+          if (g.startCol - 1 >= 0 && !simBoard[g.row][g.startCol - 1]) {
+            const leftEmpty = g.startCol - 2 < 0 || !simBoard[g.row][g.startCol - 2];
             if (leftEmpty && validateSet([tile, ...g.tiles]).valid) {
-              room.board[g.row][g.startCol - 1] = tile;
+              simBoard[g.row][g.startCol - 1] = tile;
               placedIds.add(tile.id);
+              steps.push({ row: g.row, col: g.startCol - 1, tiles: [tile] });
               attached = true;
               progress = true;
               break;
@@ -802,18 +804,43 @@ function executeAITurn(room) {
         if (attached) break;
       }
     }
+  }
 
-    if (placedIds.size > 0) {
-      ai.rack = ai.rack.map((t) => (t && placedIds.has(t.id) ? null : t));
-      room.recentAITileIds = placedIds;
+  if (steps.length > 0) {
+    room.aiStepTimeouts = [];
+    const wasFirstMeld = !ai.hasMelded;
+    const totalPlaced = placedIds.size;
+
+    steps.forEach((step, idx) => {
+      const tId = setTimeout(() => {
+        if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+        const stepIds = new Set();
+        for (let i = 0; i < step.tiles.length; i++) {
+          room.board[step.row][step.col + i] = step.tiles[i];
+          stepIds.add(step.tiles[i].id);
+        }
+        ai.rack = ai.rack.map((t) => (t && stepIds.has(t.id) ? null : t));
+        room.recentAITileIds = stepIds;
+        broadcastRoom(room);
+      }, idx * 550);
+      room.aiStepTimeouts.push(tId);
+    });
+
+    const finishId = setTimeout(() => {
+      if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+      if (wasFirstMeld) ai.hasMelded = true;
       room.consecutivePasses = 0;
       if (getRackTiles(ai).length === 0) {
         triggerGameOver(room, ai, `${ai.name} 승리!`);
         return;
       }
-      advanceToNextPlayer(room, { msg: `${ai.name}이(가) 타일 ${placedIds.size}개를 내려놓았습니다.`, tone: 'info' });
-      return;
-    }
+      const msg = wasFirstMeld
+        ? `${ai.name}이(가) ${totalPts}점으로 첫 등록했습니다!`
+        : `${ai.name}이(가) 타일 ${totalPlaced}개를 내려놓았습니다.`;
+      advanceToNextPlayer(room, { msg, tone: wasFirstMeld ? 'success' : 'info' });
+    }, steps.length * 550 + 250);
+    room.aiStepTimeouts.push(finishId);
+    return;
   }
 
   if (room.pool.length > 0) {
@@ -943,6 +970,7 @@ io.on('connection', (socket) => {
       timeLeft: TURN_SECONDS,
       timerInterval: null,
       aiTimeout: null,
+      aiStepTimeouts: [],
       cleanupTimeout: null,
       gameOverData: null,
     };
@@ -1052,7 +1080,34 @@ io.on('connection', (socket) => {
     room.board = verified.board;
     curr.rack = verified.rack;
     cb({ ok: true });
+    io.to(room.code).emit('game:remoteDrag', { active: false });
     broadcastRoom(room);
+  });
+
+  socket.on('game:dragPreview', (payload = {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || room.phase !== 'playing') return;
+    const curr = room.players[room.currentPlayerIndex];
+    if (!curr || curr.sessionId !== socket.data.sessionId) return;
+
+    if (!payload.active) {
+      socket.to(room.code).emit('game:remoteDrag', { active: false });
+      return;
+    }
+
+    const row = Number(payload.row);
+    const col = Number(payload.col);
+    if (!Number.isFinite(row) || !Number.isFinite(col)) return;
+    const tiles = Array.isArray(payload.tiles) ? payload.tiles.slice(0, 13) : [];
+    if (tiles.length === 0) return;
+
+    socket.to(room.code).emit('game:remoteDrag', {
+      active: true,
+      playerName: curr.name,
+      row: Math.max(0, Math.min(GRID_ROWS - 1, Math.round(row))),
+      col: Math.max(0, Math.min(GRID_COLS - 1, Math.round(col))),
+      tiles,
+    });
   });
 
   socket.on('game:endTurn', (_payload, cb = () => {}) => {
@@ -1153,6 +1208,7 @@ io.on('connection', (socket) => {
           room.hostSessionId = room.players[0].sessionId;
         }
       }
+      io.to(room.code).emit('game:remoteDrag', { active: false });
       broadcastRoom(room);
       cleanupRoomIfEmpty(code);
     }
