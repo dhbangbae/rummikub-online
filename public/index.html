@@ -125,10 +125,10 @@
     .rk-tile::before {
       content: '';
       position: absolute;
-      width: 78%;
+      width: 80%;
       aspect-ratio: 1 / 1;
-      top: 10%;
-      left: 11%;
+      top: 17%;
+      left: 10%;
       border-radius: 50%;
       background: radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.55) 0%, rgba(212, 204, 186, 0.22) 72%, rgba(185, 176, 158, 0.35) 100%);
       box-shadow: inset 0 1px 2px rgba(120, 110, 92, 0.22);
@@ -140,7 +140,7 @@
       z-index: 2;
       font-weight: 900;
       line-height: 1;
-      margin-top: -10%;
+      margin-top: -7%;
       letter-spacing: -0.04em;
       text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
     }
@@ -253,6 +253,25 @@
     .magnet-ghost.snapped-free {
       border: 2px dashed rgba(255, 255, 255, 0.5);
       background: rgba(255, 255, 255, 0.1);
+    }
+    .magnet-ghost.snapped-blocked {
+      border: 2px solid #f43f5e;
+      background: rgba(244, 63, 94, 0.28);
+      box-shadow: 0 0 14px rgba(244, 63, 94, 0.6);
+    }
+
+    #boardViewport, #boardGrid, #woodRack, .rack-slot {
+      touch-action: none;
+    }
+
+    .remote-drag-overlay {
+      position: absolute;
+      pointer-events: none;
+      z-index: 28;
+      display: none;
+      gap: 2px;
+      align-items: center;
+      transition: left 0.07s linear, top 0.07s linear;
     }
 
     /* Natural Beech/Oak 2-Tier Wooden Rack */
@@ -873,12 +892,20 @@
 
     let lifted = { active: false, originType: null, tiles: [] };
     let pendingServerState = null;
+    let prevBoardTilePositions = new Map();
+    let lastDragPreviewSent = 0;
 
     // Dedicated ghost overlay inside boardGrid (updated without rebuilding DOM during drags)
     const magnetGhost = document.createElement('div');
     magnetGhost.id = 'magnetGhost';
     magnetGhost.className = 'magnet-ghost';
     magnetGhost.style.display = 'none';
+
+    // Dedicated overlay for watching other players drag tiles in real time
+    const remoteDragOverlay = document.createElement('div');
+    remoteDragOverlay.id = 'remoteDragOverlay';
+    remoteDragOverlay.className = 'remote-drag-overlay';
+    let remoteDragState = { active: false, playerName: '', row: 0, col: 0, tiles: [] };
 
     // ==================== DOM REFS ====================
     const boardViewport = document.getElementById('boardViewport');
@@ -1019,6 +1046,17 @@
         }
       }
       return { valid: false, type: null, points: 0 };
+    }
+
+    // 두 장 이상이 같은 색 연속 숫자이거나 다른 색 같은 숫자(또는 유효한 3장 이상 세트)로 결합 가능한지 검사
+    function canCombineTiles(tiles) {
+      if (!tiles || tiles.length <= 1) return true;
+      if (tiles.length >= 3) return validateSet(tiles).valid;
+      const [a, b] = tiles;
+      if (a.isJoker || b.isJoker) return true;
+      if (a.num === b.num && a.color !== b.color) return true;
+      if (a.color === b.color && b.num === a.num + 1) return true;
+      return false;
     }
 
     function getBoardGroups(board = state.board) {
@@ -1360,7 +1398,7 @@
 
     function findMagneticBoardTarget(clientX, clientY, draggingTiles) {
       const vpRect = boardViewport.getBoundingClientRect();
-      if (clientX < vpRect.left - 16 || clientX > vpRect.right + 16 || clientY < vpRect.top - 16 || clientY > vpRect.bottom + 8) {
+      if (clientX < vpRect.left - 12 || clientX > vpRect.right + 12 || clientY < vpRect.top - 12 || clientY > vpRect.bottom + 4) {
         return null;
       }
       const rect = boardGrid.getBoundingClientRect();
@@ -1371,6 +1409,11 @@
       const groupLeftX = clientX - totalGroupW / 2;
       const fCol = state.viewColStart + (groupLeftX - rect.left) / state.cellW;
       const fRow = state.viewRowStart + (clientY - rect.top - state.cellH / 2) / state.cellH;
+
+      // 보드 영역 밖으로 너무 멀리 벗어나면 배치 불가 처리 (바닥 아무데나 떨어지는 현상 방지)
+      if (fRow < -0.6 || fRow > GRID_ROWS - 0.4 || fCol < -0.8 || fCol + len > GRID_COLS + 0.8) {
+        return null;
+      }
 
       // 0. Hovering over existing set -> auto-split check
       const hoverRow = state.viewRowStart + Math.floor((clientY - rect.top) / state.cellH);
@@ -1388,10 +1431,29 @@
           if (splitResult) {
             return { type: 'board-split', row: hoverRow, col: gStart, groupStart: gStart, groupEnd: gEnd, splitResult, isMagnet: true, isValidMerge: true };
           }
+          // 기존 패 위를 덮어쓸 때 자동 분리가 안 되면 다른 곳에 텔레포트하지 않고 배치 차단
+          return null;
         }
       }
 
-      // 1. Magnetic attraction to existing sets' left/right edges
+      const checkAdjacencyCompatible = (r, colPos) => {
+        const testRow = state.board[r].map((t) => (t && !ignoreIds.has(t.id) ? t : null));
+        for (let i = 0; i < len; i++) testRow[colPos + i] = draggingTiles[i];
+        let s = colPos;
+        while (s > 0 && testRow[s - 1]) s--;
+        let e = colPos + len - 1;
+        while (e < GRID_COLS - 1 && testRow[e + 1]) e++;
+        const touchesNeighbor = s < colPos || e > colPos + len - 1;
+        if (!touchesNeighbor) return { touchesNeighbor: false, compatible: true, validMerge: false };
+        const combined = testRow.slice(s, e + 1);
+        return {
+          touchesNeighbor: true,
+          compatible: canCombineTiles(combined),
+          validMerge: validateSet(combined).valid,
+        };
+      };
+
+      // 1. Magnetic attraction ONLY to compatible existing sets' left/right edges
       let bestMagnet = null;
       let bestDist = Infinity;
       for (let r = 0; r < GRID_ROWS; r++) {
@@ -1406,37 +1468,41 @@
 
             const rightCol = gEnd + 1;
             if (isAreaFreeOnBoard(r, rightCol, len, ignoreIds) && Math.abs(fCol - rightCol) <= MAGNET_COL_THRESHOLD) {
-              const dist = Math.hypot(Math.abs(fCol - rightCol), Math.abs(fRow - r) * 1.4);
-              if (dist < bestDist) { bestDist = dist; bestMagnet = { row: r, col: rightCol }; }
+              const adj = checkAdjacencyCompatible(r, rightCol);
+              if (adj.compatible) {
+                const dist = Math.hypot(Math.abs(fCol - rightCol), Math.abs(fRow - r) * 1.4);
+                if (dist < bestDist) { bestDist = dist; bestMagnet = { row: r, col: rightCol, isValidMerge: adj.validMerge }; }
+              }
             }
             const leftCol = gStart - len;
             if (isAreaFreeOnBoard(r, leftCol, len, ignoreIds) && Math.abs(fCol - leftCol) <= MAGNET_COL_THRESHOLD) {
-              const dist = Math.hypot(Math.abs(fCol - leftCol), Math.abs(fRow - r) * 1.4);
-              if (dist < bestDist) { bestDist = dist; bestMagnet = { row: r, col: leftCol }; }
+              const adj = checkAdjacencyCompatible(r, leftCol);
+              if (adj.compatible) {
+                const dist = Math.hypot(Math.abs(fCol - leftCol), Math.abs(fRow - r) * 1.4);
+                if (dist < bestDist) { bestDist = dist; bestMagnet = { row: r, col: leftCol, isValidMerge: adj.validMerge }; }
+              }
             }
           } else c++;
         }
       }
 
       if (bestMagnet) {
-        const testRow = state.board[bestMagnet.row].map((t) => (t && !ignoreIds.has(t.id) ? t : null));
-        for (let i = 0; i < len; i++) testRow[bestMagnet.col + i] = draggingTiles[i];
-        let s = bestMagnet.col;
-        while (s > 0 && testRow[s - 1]) s--;
-        let e = bestMagnet.col + len - 1;
-        while (e < GRID_COLS - 1 && testRow[e + 1]) e++;
-        const validMerge = validateSet(testRow.slice(s, e + 1)).valid;
-        return { type: 'board', row: bestMagnet.row, col: bestMagnet.col, isMagnet: true, isValidMerge: validMerge };
+        return { type: 'board', row: bestMagnet.row, col: bestMagnet.col, isMagnet: true, isValidMerge: bestMagnet.isValidMerge };
       }
 
-      // 2. Free placement anywhere inside visible board
+      // 2. Free placement at exact cursor spot (never teleport to unrelated distant spots)
       const baseCol = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
       const baseRow = Math.max(0, Math.min(GRID_ROWS - 1, Math.round(fRow)));
-      if (isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
-        return { type: 'board', row: baseRow, col: baseCol, isMagnet: false, isValidMerge: false };
+      if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
+        return null;
       }
-      const near = findNearestEmptySpot(baseRow, baseCol, len, ignoreIds);
-      return near ? { type: 'board', row: near.row, col: near.col, isMagnet: false, isValidMerge: false } : null;
+
+      const adj = checkAdjacencyCompatible(baseRow, baseCol);
+      if (adj.touchesNeighbor && !adj.compatible) {
+        return { type: 'board-blocked', row: baseRow, col: baseCol, isMagnet: false, isValidMerge: false };
+      }
+
+      return { type: 'board', row: baseRow, col: baseCol, isMagnet: adj.touchesNeighbor, isValidMerge: adj.validMerge };
     }
 
     function findRackDropTarget(clientX, clientY) {
@@ -1473,7 +1539,7 @@
     function createClassicJokerSVG(color, sizePx) {
       const stroke = color === 'red' ? '#c81912' : '#111827';
       return `
-        <svg width="${sizePx}" height="${sizePx}" viewBox="0 0 40 40" class="relative z-10" style="margin-top:-10%;">
+        <svg width="${sizePx}" height="${sizePx}" viewBox="0 0 40 40" class="relative z-10" style="margin-top:-7%;">
           <circle cx="20" cy="20" r="14.5" fill="#fffdf7" stroke="${stroke}" stroke-width="2.4"/>
           <path d="M9 12 C12 7, 16 6, 20 8 C24 6, 28 7, 31 12" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round"/>
           <circle cx="14.5" cy="17.5" r="1.9" fill="${stroke}"/>
@@ -1716,7 +1782,7 @@
     }
 
     function updateMagnetGhost(st) {
-      if (!interact.isDragging || !st || (st.type !== 'board' && st.type !== 'board-split')) {
+      if (!interact.isDragging || !st || (st.type !== 'board' && st.type !== 'board-split' && st.type !== 'board-blocked')) {
         magnetGhost.style.display = 'none';
         return;
       }
@@ -1728,6 +1794,13 @@
         magnetGhost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
         magnetGhost.style.height = `${state.cellH - 2}px`;
         magnetGhost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow">✂ 자동 분리</span>';
+      } else if (st.type === 'board-blocked') {
+        magnetGhost.className = 'magnet-ghost snapped-blocked flex items-center justify-center';
+        magnetGhost.style.left = `${(st.col - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-rose-950/90 text-rose-100 text-[9px] font-black shadow whitespace-nowrap">✕ 붙이기 불가</span>';
       } else {
         magnetGhost.className = 'magnet-ghost ' + (st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free');
         magnetGhost.style.left = `${(st.col - state.viewColStart) * state.cellW + 1}px`;
@@ -1736,6 +1809,31 @@
         magnetGhost.style.height = `${state.cellH - 2}px`;
         magnetGhost.innerHTML = '';
       }
+    }
+
+    function updateRemoteDragOverlay() {
+      if (!remoteDragState.active || isMyTurn() || !remoteDragState.tiles.length) {
+        remoteDragOverlay.style.display = 'none';
+        return;
+      }
+      const tileW = Math.max(14, state.cellW - 2);
+      const tileH = Math.max(20, state.cellH - 2);
+      remoteDragOverlay.innerHTML = '';
+      remoteDragOverlay.style.display = 'flex';
+      remoteDragOverlay.style.left = `${(remoteDragState.col - state.viewColStart) * state.cellW + 1}px`;
+      remoteDragOverlay.style.top = `${(remoteDragState.row - state.viewRowStart) * state.cellH + 1}px`;
+
+      for (const t of remoteDragState.tiles) {
+        const el = buildTileElement(t, tileW, tileH, 'shadow-xl');
+        el.style.opacity = '0.82';
+        el.style.boxShadow = '0 0 12px rgba(56, 189, 248, 0.9), 0 0 0 2px #38bdf8';
+        remoteDragOverlay.appendChild(el);
+      }
+
+      const tag = document.createElement('div');
+      tag.className = 'absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-sky-500 text-slate-950 text-[9px] font-black whitespace-nowrap shadow';
+      tag.textContent = `${remoteDragState.playerName} 이동 중`;
+      remoteDragOverlay.appendChild(tag);
     }
 
     function renderBoard(justSnappedIds = new Set()) {
@@ -1759,6 +1857,9 @@
 
       boardGrid.appendChild(magnetGhost);
       updateMagnetGhost(interact.snapTarget);
+
+      boardGrid.appendChild(remoteDragOverlay);
+      updateRemoteDragOverlay();
 
       const tileW = Math.max(11, state.cellW - 2);
       const tileH = Math.max(16, state.cellH - 2);
@@ -1904,6 +2005,9 @@
       dragLayer.style.display = 'none';
       magnetGhost.style.display = 'none';
       highlightRackHover(null);
+      if (interact.isDragging && isMyTurn()) {
+        socket.emit('game:dragPreview', { active: false });
+      }
       interact.active = false;
       interact.pointerId = null;
       interact.isDragging = false;
@@ -1952,7 +2056,7 @@
       interact.dragOriginY = e.clientY;
       interact.currX = e.clientX;
       interact.currY = e.clientY;
-      interact.dragLiftY = e.pointerType === 'touch' ? 30 : 8;
+      interact.dragLiftY = e.pointerType === 'touch' ? 20 : 8;
       interact.holdStart = performance.now();
       interact.isDragging = false;
       interact.snapTarget = null;
@@ -2072,6 +2176,9 @@
     }
 
     function computeDropTargetAt(clientX, clientY) {
+      // 손가락/커서 위치가 받침대 안이면 받침대 우선 (터치 오프셋 때문에 바닥으로 잘못 떨어지는 현상 방지)
+      const directRackTarget = findRackDropTarget(clientX, clientY);
+      if (directRackTarget) return directRackTarget;
       const dropX = clientX;
       const dropY = clientY - interact.dragLiftY;
       const rackTarget = findRackDropTarget(dropX, dropY);
@@ -2080,8 +2187,29 @@
       return null;
     }
 
+    function emitDragPreviewThrottled(snapTarget) {
+      if (!isMyTurn()) return;
+      const now = performance.now();
+      if (now - lastDragPreviewSent < 60) return;
+      lastDragPreviewSent = now;
+      if (snapTarget && (snapTarget.type === 'board' || snapTarget.type === 'board-split')) {
+        socket.emit('game:dragPreview', {
+          active: true,
+          row: snapTarget.row,
+          col: snapTarget.col,
+          tiles: interact.selectedTiles,
+        });
+      } else {
+        socket.emit('game:dragPreview', { active: false });
+      }
+    }
+
     function onGlobalPointerMove(e) {
       if (!interact.active || e.pointerId !== interact.pointerId) return;
+      if (e.pointerType === 'mouse' && e.buttons === 0) {
+        onGlobalPointerUp(e);
+        return;
+      }
       e.preventDefault();
       interact.currX = e.clientX;
       interact.currY = e.clientY;
@@ -2110,6 +2238,7 @@
       interact.snapTarget = computeDropTargetAt(e.clientX, e.clientY);
       updateMagnetGhost(interact.snapTarget);
       highlightRackHover(interact.snapTarget);
+      emitDragPreviewThrottled(interact.snapTarget);
     }
 
     function highlightRackHover(target) {
@@ -2139,6 +2268,9 @@
       dragLayer.style.display = 'none';
       magnetGhost.style.display = 'none';
       highlightRackHover(null);
+      if (interact.isDragging && isMyTurn()) {
+        socket.emit('game:dragPreview', { active: false });
+      }
 
       const wasCancelled = e.type === 'pointercancel';
       const wasDragging = interact.isDragging;
@@ -2173,7 +2305,11 @@
       let didMutate = false;
 
       if (wasDragging) {
-        if (snapTarget && snapTarget.type === 'board-split') {
+        if (snapTarget && snapTarget.type === 'board-blocked') {
+          playErrorBuzz();
+          showToast('상관없는 패 옆에는 붙일 수 없습니다.', 'error');
+          syncSelectionVisuals();
+        } else if (snapTarget && snapTarget.type === 'board-split') {
           didMutate = true;
           applyAutoSplitOnBoard(selected, snapTarget);
         } else if (snapTarget && snapTarget.type === 'board') {
@@ -2302,63 +2438,53 @@
         return;
       }
 
-      removeTilesFromCurrentLocations(ids);
+      // 놓을 위치의 좌우 인접 패가 있을 때 서로 상관없는 패면 붙이기 차단
+      const getNeighborExcluding = (r, startC, dir) => {
+        const arr = [];
+        let c = startC;
+        while (c >= 0 && c < GRID_COLS && state.board[r][c] && !ids.has(state.board[r][c].id)) {
+          arr.push({ tile: state.board[r][c], row: r, col: c });
+          c += dir;
+        }
+        return dir < 0 ? arr.reverse() : arr;
+      };
 
-      const leftNeighbor = (col > 0 && state.board[row][col - 1]) ? getBoardContiguousGroup(row, col - 1) : [];
-      const rightNeighbor = (col + tiles.length < GRID_COLS && state.board[row][col + tiles.length]) ? getBoardContiguousGroup(row, col + tiles.length) : [];
+      const leftNeighbor = col > 0 ? getNeighborExcluding(row, col - 1, -1) : [];
+      const rightNeighbor = col + tiles.length < GRID_COLS ? getNeighborExcluding(row, col + tiles.length, 1) : [];
       const leftTiles = leftNeighbor.map((x) => x.tile);
       const rightTiles = rightNeighbor.map((x) => x.tile);
-      const leftWasMade = leftTiles.length >= 3 && validateSet(leftTiles).valid;
-      const rightWasMade = rightTiles.length >= 3 && validateSet(rightTiles).valid;
+      const hasNeighbor = leftTiles.length > 0 || rightTiles.length > 0;
+      const combinedTiles = [...leftTiles, ...tiles, ...rightTiles];
 
-      if (leftWasMade && rightTiles.length === 0 && !validateSet([...leftTiles, ...tiles]).valid) {
-        const splitRes = findAutoSplitForGroup(leftTiles, tiles);
-        if (splitRes) {
-          applyAutoSplitOnBoard(tiles, { row, groupStart: leftNeighbor[0].col, groupEnd: leftNeighbor[leftNeighbor.length - 1].col, splitResult: splitRes });
-          return;
+      if (hasNeighbor && !canCombineTiles(combinedTiles)) {
+        const leftWasMade = leftTiles.length >= 3 && validateSet(leftTiles).valid;
+        const rightWasMade = rightTiles.length >= 3 && validateSet(rightTiles).valid;
+        if (leftWasMade && rightTiles.length === 0) {
+          const splitRes = findAutoSplitForGroup(leftTiles, tiles);
+          if (splitRes) {
+            applyAutoSplitOnBoard(tiles, { row, groupStart: leftNeighbor[0].col, groupEnd: leftNeighbor[leftNeighbor.length - 1].col, splitResult: splitRes });
+            return;
+          }
         }
-      }
-      if (rightWasMade && leftTiles.length === 0 && !validateSet([...tiles, ...rightTiles]).valid) {
-        const splitRes = findAutoSplitForGroup(rightTiles, tiles);
-        if (splitRes) {
-          applyAutoSplitOnBoard(tiles, { row, groupStart: rightNeighbor[0].col, groupEnd: rightNeighbor[rightNeighbor.length - 1].col, splitResult: splitRes });
-          return;
+        if (rightWasMade && leftTiles.length === 0) {
+          const splitRes = findAutoSplitForGroup(rightTiles, tiles);
+          if (splitRes) {
+            applyAutoSplitOnBoard(tiles, { row, groupStart: rightNeighbor[0].col, groupEnd: rightNeighbor[rightNeighbor.length - 1].col, splitResult: splitRes });
+            return;
+          }
         }
+        playErrorBuzz();
+        showToast('상관없는 패 옆에는 붙일 수 없습니다.', 'error');
+        renderAll();
+        return;
       }
 
+      removeTilesFromCurrentLocations(ids);
       for (let i = 0; i < tiles.length; i++) state.board[row][col + i] = tiles[i];
 
-      const animatedIds = new Set(ids);
-      const combinedValid = validateSet([...leftTiles, ...tiles, ...rightTiles]).valid;
-      let relocatedCount = 0;
-
-      if (!combinedValid) {
-        if (leftWasMade && !validateSet([...leftTiles, ...tiles]).valid) {
-          for (const item of leftNeighbor) state.board[item.row][item.col] = null;
-          const spot = findNearestEmptySpot(row, Math.max(0, leftNeighbor[0].col - 1), leftTiles.length);
-          if (spot) {
-            for (let i = 0; i < leftTiles.length; i++) { state.board[spot.row][spot.col + i] = leftTiles[i]; animatedIds.add(leftTiles[i].id); }
-            relocatedCount++;
-          } else {
-            for (const item of leftNeighbor) state.board[item.row][item.col] = item.tile;
-          }
-        }
-        if (rightWasMade && !validateSet([...tiles, ...rightTiles]).valid) {
-          for (const item of rightNeighbor) state.board[item.row][item.col] = null;
-          const spot = findNearestEmptySpot(row, Math.min(GRID_COLS - rightTiles.length, rightNeighbor[0].col + 1), rightTiles.length);
-          if (spot) {
-            for (let i = 0; i < rightTiles.length; i++) { state.board[spot.row][spot.col + i] = rightTiles[i]; animatedIds.add(rightTiles[i].id); }
-            relocatedCount++;
-          } else {
-            for (const item of rightNeighbor) state.board[item.row][item.col] = item.tile;
-          }
-        }
-      }
-
-      if (relocatedCount > 0) showToast('옆에 있던 메이드 패를 빈 자리로 자동 이동했습니다.');
       playClack(isMagnet);
       computeBoardDimensions(false);
-      renderBoard(animatedIds);
+      renderBoard(ids);
       renderRack();
       syncBoardMoveToServer();
     }
@@ -2508,6 +2634,23 @@
     }
 
     function applyRoomState(payload) {
+      const nextBoard = payload.board || Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
+      const movedRemoteIds = new Set();
+      const nextPositions = new Map();
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          const t = nextBoard[r]?.[c];
+          if (t) {
+            const posKey = `${r},${c}`;
+            nextPositions.set(t.id, posKey);
+            if (prevBoardTilePositions.size > 0 && prevBoardTilePositions.get(t.id) !== posKey) {
+              movedRemoteIds.add(t.id);
+            }
+          }
+        }
+      }
+      prevBoardTilePositions = nextPositions;
+
       state.code = payload.code;
       state.phase = payload.phase;
       state.maxPlayers = payload.maxPlayers;
@@ -2519,7 +2662,7 @@
       state.timeLeft = payload.timeLeft;
       state.finalRoundTurnsLeft = payload.finalRoundTurnsLeft ?? null;
       state.finalRoundTriggerName = payload.finalRoundTriggerName || null;
-      state.board = payload.board || Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
+      state.board = nextBoard;
       state.playedFromRackIds = new Set(payload.playedFromRackIds || []);
       state.recentAITileIds = new Set(payload.recentAITileIds || []);
       state.hasBoardChanged = Boolean(payload.hasBoardChanged);
@@ -2535,7 +2678,15 @@
       } else if (state.phase === 'playing') {
         lobbyModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
-        renderAll();
+        computeBoardDimensions(interact.isDragging);
+        renderPlayersSidebar();
+        renderPoolAndStatus();
+        renderBoard(movedRemoteIds);
+        renderRack();
+        updateControls();
+        if (movedRemoteIds.size > 0 && !isMyTurn()) {
+          playClack(true);
+        }
       } else if (state.phase === 'gameover') {
         lobbyModal.classList.add('hidden');
         renderAll();
@@ -2549,6 +2700,21 @@
         return;
       }
       applyRoomState(payload);
+    });
+
+    socket.on('game:remoteDrag', (payload = {}) => {
+      if (!payload.active || isMyTurn()) {
+        remoteDragState = { active: false, playerName: '', row: 0, col: 0, tiles: [] };
+      } else {
+        remoteDragState = {
+          active: true,
+          playerName: payload.playerName || '상대',
+          row: payload.row || 0,
+          col: payload.col || 0,
+          tiles: Array.isArray(payload.tiles) ? payload.tiles : [],
+        };
+      }
+      updateRemoteDragOverlay();
     });
 
     socket.on('game:timer', ({ timeLeft, currentPlayerIndex }) => {
@@ -2702,6 +2868,8 @@
     });
 
     window.addEventListener('resize', () => {
+      // 모바일 드래그 중 주소창 높이 변화로 resize가 발생해 드래그 중인 타일이 끊기는 현상 방지
+      if (interact.active || interact.isDragging) return;
       computeBoardDimensions(false);
       if (state.phase === 'playing' || state.phase === 'gameover') {
         renderBoard();
