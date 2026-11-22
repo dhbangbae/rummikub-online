@@ -8,7 +8,8 @@
   <script src="/socket.io/socket.io.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap" rel="stylesheet" />
   <style>
     :root {
       --felt-center: #19519c;
@@ -38,11 +39,10 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+      font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, 'Malgun Gothic', sans-serif;
       background: #071b42;
       color: #f8fafc;
       overscroll-behavior: none;
-      touch-action: none;
     }
 
     /* Classic Royal Blue Velvet Felt Table */
@@ -72,7 +72,6 @@
       align-items: center;
       justify-content: center;
       pointer-events: none;
-      user-select: none;
       z-index: 1;
       opacity: 0.24;
       transform: translateY(-6%);
@@ -98,6 +97,10 @@
       line-height: 1;
     }
 
+    #boardViewport, #boardGrid, #woodRack {
+      touch-action: none;
+    }
+
     /* Authentic Original Rummikub Ivory Tile */
     .rk-tile {
       position: relative;
@@ -120,8 +123,11 @@
       transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.12s ease, opacity 0.1s ease;
     }
 
-    .rk-tile:active { cursor: grabbing; }
+    .rk-tile:active {
+      cursor: grabbing;
+    }
 
+    /* Circular recessed dimple positioned so number sits centered inside */
     .rk-tile::before {
       content: '';
       position: absolute;
@@ -130,17 +136,18 @@
       top: 17%;
       left: 10%;
       border-radius: 50%;
-      background: radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.55) 0%, rgba(212, 204, 186, 0.22) 72%, rgba(185, 176, 158, 0.35) 100%);
-      box-shadow: inset 0 1px 2px rgba(120, 110, 92, 0.22);
+      background: radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.58) 0%, rgba(212, 204, 186, 0.24) 72%, rgba(185, 176, 158, 0.38) 100%);
+      box-shadow: inset 0 1px 2px rgba(120, 110, 92, 0.24);
       pointer-events: none;
     }
 
     .rk-tile-num {
       position: relative;
       z-index: 2;
+      font-family: 'Pretendard Variable', Pretendard, sans-serif;
       font-weight: 900;
       line-height: 1;
-      margin-top: -7%;
+      margin-top: -2%;
       letter-spacing: -0.04em;
       text-shadow: 0 1px 0 rgba(255, 255, 255, 0.65);
     }
@@ -177,17 +184,27 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.95);
     }
 
-    .rk-tile.ai-highlight { animation: aiPulse 1.3s ease-out; }
+    .rk-tile.ai-highlight {
+      animation: aiPulse 1.1s ease-out;
+    }
+
     @keyframes aiPulse {
-      0% { transform: scale(1.15); box-shadow: 0 0 14px #fb923c, 0 0 0 2.5px #fed7aa; }
+      0% { transform: scale(1.16); box-shadow: 0 0 14px #fb923c, 0 0 0 2.5px #fed7aa; }
       100% { transform: scale(1); }
     }
 
-    .rk-tile.snap-pop { animation: snapPop 0.2s cubic-bezier(0.2, 1.4, 0.4, 1); }
+    .rk-tile.snap-pop {
+      animation: snapPop 0.2s cubic-bezier(0.2, 1.4, 0.4, 1);
+    }
+
     @keyframes snapPop {
       0% { transform: scale(1.12) translateY(-2px); }
       65% { transform: scale(0.97) translateY(0); }
       100% { transform: scale(1) translateY(0); }
+    }
+
+    .rk-tile.dragging-source {
+      opacity: 0.22 !important;
     }
 
     .rk-tile.lifted-selected {
@@ -225,7 +242,11 @@
       border-radius: 7px;
       transition: all 0.16s ease;
     }
-    .group-frame.valid { box-shadow: 0 0 10px rgba(251, 146, 60, 0.32); }
+
+    .group-frame.valid {
+      box-shadow: 0 0 10px rgba(251, 146, 60, 0.32);
+    }
+
     .group-frame.invalid {
       border: 2px solid rgba(248, 113, 113, 0.95);
       background: rgba(239, 68, 68, 0.18);
@@ -237,41 +258,42 @@
       position: absolute;
       pointer-events: none;
       border-radius: 6px;
-      z-index: 20;
+      z-index: 25;
       transition: left 0.05s ease-out, top 0.05s ease-out;
     }
+
     .magnet-ghost.snapped-valid {
       border: 2px solid #4ade80;
       background: rgba(74, 222, 128, 0.28);
       box-shadow: 0 0 16px rgba(74, 222, 128, 0.65);
     }
+
     .magnet-ghost.snapped-magnet {
       border: 2px solid #38bdf8;
       background: rgba(56, 189, 248, 0.25);
       box-shadow: 0 0 14px rgba(56, 189, 248, 0.55);
     }
+
     .magnet-ghost.snapped-free {
-      border: 2px dashed rgba(255, 255, 255, 0.5);
-      background: rgba(255, 255, 255, 0.1);
+      border: 2px dashed rgba(255, 255, 255, 0.55);
+      background: rgba(255, 255, 255, 0.12);
     }
+
     .magnet-ghost.snapped-blocked {
-      border: 2px solid #f43f5e;
+      border: 2px solid #fb7185;
       background: rgba(244, 63, 94, 0.28);
-      box-shadow: 0 0 14px rgba(244, 63, 94, 0.6);
+      box-shadow: 0 0 14px rgba(244, 63, 94, 0.65);
     }
 
-    #boardViewport, #boardGrid, #woodRack, .rack-slot {
-      touch-action: none;
-    }
-
-    .remote-drag-overlay {
+    /* Remote Player Live Drag Preview */
+    .remote-drag-ghost {
       position: absolute;
       pointer-events: none;
       z-index: 28;
       display: none;
-      gap: 2px;
+      flex-direction: column;
       align-items: center;
-      transition: left 0.07s linear, top 0.07s linear;
+      transition: left 0.09s linear, top 0.09s linear;
     }
 
     /* Natural Beech/Oak 2-Tier Wooden Rack */
@@ -321,10 +343,11 @@
       align-items: center;
       justify-content: center;
       position: relative;
-      transition: background 0.12s ease;
+      transition: background 0.1s ease;
     }
+
     .rack-slot.drag-over {
-      background: rgba(250, 204, 21, 0.35);
+      background: rgba(250, 204, 21, 0.38);
       outline: 2px dashed #fde047;
     }
 
@@ -346,11 +369,13 @@
         0 8px 18px rgba(3, 12, 34, 0.6),
         inset 0 1px 0 rgba(255, 255, 255, 0.35);
     }
+
     .rk-draw-pill.ready-confirm {
       background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
       border-color: #bbf7d0;
       box-shadow: 0 0 18px rgba(74, 222, 128, 0.65), 0 8px 18px rgba(3, 12, 34, 0.6);
     }
+
     .rk-draw-pill.invalid-state {
       background: linear-gradient(180deg, #e11d48 0%, #9f1239 100%);
       border-color: #fecdd3;
@@ -361,6 +386,7 @@
       background: linear-gradient(135deg, #dbeafe 0%, #64748b 50%, #1e3a8a 100%);
       box-shadow: 0 4px 12px rgba(2, 10, 30, 0.65);
     }
+
     .avatar-ring.active-turn {
       box-shadow: 0 0 18px rgba(74, 222, 128, 0.7), 0 4px 14px rgba(2, 10, 30, 0.7);
     }
@@ -381,7 +407,7 @@
     }
 
     .custom-scroll::-webkit-scrollbar { width: 6px; }
-    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 999px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 999px; }
   </style>
 </head>
 <body class="rummikub-table h-screen w-screen overflow-hidden flex flex-col">
@@ -395,7 +421,7 @@
   <!-- TOP UTILITY BAR -->
   <div class="relative z-30 flex items-center justify-between px-2 sm:px-3 pt-1.5 pb-0.5 pointer-events-none">
     <div class="flex items-center gap-1.5 pointer-events-auto flex-wrap">
-      <div id="roomCodeBadgeWrap" class="hidden items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/60 border border-amber-400/60 text-amber-300 text-[11px] font-black backdrop-blur-sm">
+      <div id="roomCodeBadgeWrap" class="hidden items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/65 border border-amber-400/60 text-amber-300 text-[11px] font-black backdrop-blur-sm">
         <span class="opacity-75">방</span>
         <span id="hudRoomCode" class="tracking-widest">----</span>
       </div>
@@ -403,7 +429,7 @@
         첫 등록: 0 / 30점
       </div>
       <div id="finalRoundBadge" class="hidden px-2.5 py-1 rounded-full bg-rose-950/85 border border-rose-400/80 text-rose-100 text-[11px] font-black backdrop-blur-sm animate-pulse">
-        🔥 파이널 라운드
+        🔥 마지막 라운드
       </div>
       <div id="turnStatusText" class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/45 border border-blue-400/30 text-blue-100 text-[11px] font-semibold backdrop-blur-sm max-w-xs truncate">
         <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -427,13 +453,15 @@
   <!-- MAIN TABLE AREA -->
   <div class="relative z-10 flex-1 flex items-stretch min-h-0 w-full px-1 sm:px-2 pb-1.5 gap-1 sm:gap-2">
 
-    <!-- LEFT SIDEBAR: Player Avatars & Active 40s Circular Timer -->
+    <!-- LEFT SIDEBAR: Player Avatars & 40s Circular Timer -->
     <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-14 sm:w-[76px] z-20"></aside>
 
-    <!-- CENTER COLUMN: Free-Placement Board + Natural Wooden 2-Tier Rack -->
+    <!-- CENTER COLUMN: Board + Wooden Rack -->
     <div class="flex-1 min-w-0 flex flex-col items-center justify-between gap-1 min-h-0">
       <main id="boardViewport" class="flex-1 w-full min-h-0 relative flex items-center justify-center overflow-hidden">
         <div id="boardGrid" class="relative rounded-xl"></div>
+        <div id="magnetGhost" class="magnet-ghost" style="display:none;"></div>
+        <div id="remoteDragGhost" class="remote-drag-ghost"></div>
 
         <!-- Floating Selected-Tiles Banner -->
         <div id="liftedBanner" class="hidden absolute top-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-amber-400 text-slate-950 font-extrabold text-[11px] sm:text-xs px-3 py-1 rounded-full shadow-lg border border-white">
@@ -465,7 +493,7 @@
       </section>
     </div>
 
-    <!-- RIGHT SIDEBAR: Stacked 789 / 777 Pill + Tall Draw/Confirm (+) Pill -->
+    <!-- RIGHT SIDEBAR: 789/777 & Draw/Confirm (+) Pill -->
     <aside class="flex flex-col items-center justify-end gap-2.5 pb-1 shrink-0 w-12 sm:w-[66px] z-20">
       <div class="rk-pill-capsule w-full rounded-[24px] overflow-hidden flex flex-col">
         <button id="btnSortRun" type="button"
@@ -514,87 +542,84 @@
   <!-- FLOATING DRAG LAYER -->
   <div id="dragLayer"></div>
 
-  <!-- ONLINE MULTIPLAYER LOBBY & WAITING ROOM MODAL -->
+  <!-- LOBBY MODAL -->
   <div id="lobbyModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="w-full max-w-md rounded-2xl bg-[#0b2759] border border-blue-400/45 shadow-2xl overflow-hidden">
       <div class="px-6 py-5 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 text-center">
-        <div class="text-xs font-bold text-amber-300 tracking-widest uppercase">The Original · Online Multiplayer</div>
+        <div class="text-xs font-bold text-amber-300 tracking-widest uppercase">The Original · Online</div>
         <h1 class="text-3xl font-black text-white tracking-tight" style="font-family: 'Playfair Display', Georgia, serif;">Rummikub</h1>
-        <p class="text-xs text-blue-200/85 mt-1">숫자 4자리 방 코드 · 2~4인 실시간 대전 · 턴당 40초</p>
+        <p class="text-xs text-blue-200/85 mt-1">실시간 2~4인 멀티플레이 · 4자리 숫자 방 코드</p>
       </div>
 
-      <!-- Entry View -->
-      <div id="lobbyEntryView" class="p-6 space-y-4">
-        <div id="offlineNotice" class="hidden rounded-xl bg-amber-500/15 border border-amber-400/50 px-3 py-2 text-[11px] text-amber-200">
-          ⚠️ 실시간 멀티플레이 서버(Node.js + Socket.IO)에 연결되지 않았습니다. Render에 배포하거나 <code>npm start</code>로 실행해 접속해 주세요.
-        </div>
-
+      <div class="p-5 space-y-4">
         <div>
-          <label for="inputPlayerName" class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">플레이어 닉네임 (자동 저장)</label>
+          <label for="inputPlayerName" class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">플레이어 이름 (자동 저장)</label>
           <input id="inputPlayerName" type="text" maxlength="14" placeholder="닉네임을 입력하세요"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-blue-950/85 border border-blue-500/60 text-white font-bold text-sm focus:outline-none focus:border-amber-400" />
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-blue-500/50 text-white font-bold text-sm focus:outline-none focus:border-amber-400" />
         </div>
 
-        <div>
-          <label class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">방 만들기 인원 (2~4인)</label>
+        <div class="p-3.5 rounded-xl bg-blue-950/60 border border-blue-500/30 space-y-3">
+          <div class="text-xs font-extrabold text-amber-300">새 방 만들기</div>
           <div class="grid grid-cols-3 gap-2" id="playerCountSelector">
-            <button type="button" data-count="2" class="count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">2인</button>
-            <button type="button" data-count="3" class="count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">3인</button>
-            <button type="button" data-count="4" class="count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-amber-400 border-amber-200 text-slate-950 shadow-lg">4인</button>
+            <button type="button" data-count="2" class="count-opt py-2 rounded-lg font-extrabold text-xs border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">2인</button>
+            <button type="button" data-count="3" class="count-opt py-2 rounded-lg font-extrabold text-xs border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">3인</button>
+            <button type="button" data-count="4" class="count-opt py-2 rounded-lg font-extrabold text-xs border transition bg-amber-400 border-amber-200 text-slate-950 shadow-lg">4인</button>
+          </div>
+          <button id="btnCreateRoom" type="button" class="w-full py-2.5 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-black text-sm shadow-lg transition active:scale-[0.99]">
+            방 만들기 (4자리 코드 생성)
+          </button>
+        </div>
+
+        <div class="p-3.5 rounded-xl bg-blue-950/60 border border-blue-500/30 space-y-2.5">
+          <div class="text-xs font-extrabold text-sky-300">친구 방에 참여하기</div>
+          <div class="flex gap-2">
+            <input id="inputRoomCode" type="text" inputmode="numeric" maxlength="4" placeholder="4자리 숫자 코드"
+              class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-blue-500/50 text-white font-black text-center tracking-[0.28em] text-base focus:outline-none focus:border-sky-400" />
+            <button id="btnJoinRoom" type="button" class="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm shadow-lg transition">
+              참여
+            </button>
           </div>
         </div>
 
-        <button id="btnCreateRoom" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-black text-sm shadow-xl transition active:scale-[0.99]">
-          ✨ 새 방 만들기 (숫자 4자리 코드)
-        </button>
+        <div id="lobbyError" class="hidden text-center text-xs font-bold text-rose-300 bg-rose-950/60 border border-rose-500/40 rounded-lg px-3 py-2"></div>
+      </div>
+    </div>
+  </div>
 
-        <div class="flex items-center gap-2 text-[11px] text-blue-300/70">
-          <div class="flex-1 h-[1px] bg-blue-700/60"></div>
-          <span>또는 친구 방에 참여</span>
-          <div class="flex-1 h-[1px] bg-blue-700/60"></div>
-        </div>
-
-        <div class="flex gap-2">
-          <input id="inputRoomCode" type="text" inputmode="numeric" maxlength="4" placeholder="4자리 코드"
-            class="flex-1 px-3.5 py-2.5 rounded-xl bg-blue-950/85 border border-blue-500/60 text-white font-black text-center tracking-[0.35em] text-base focus:outline-none focus:border-amber-400" />
-          <button id="btnJoinRoom" type="button" class="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm shadow-lg transition">
-            입장
-          </button>
+  <!-- WAITING ROOM MODAL -->
+  <div id="waitingModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl bg-[#0b2759] border border-blue-400/50 shadow-2xl overflow-hidden">
+      <div class="px-6 py-4 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 text-center">
+        <div class="text-xs font-bold text-blue-200">친구에게 아래 4자리 참여 코드를 알려주세요</div>
+        <div class="mt-2 flex items-center justify-center gap-2">
+          <span id="waitingRoomCode" class="text-4xl font-black tracking-[0.22em] text-amber-300">0000</span>
+          <button id="btnCopyCode" type="button" class="px-2.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 border border-blue-400/40 text-xs font-bold text-blue-100">복사</button>
         </div>
       </div>
 
-      <!-- Waiting Room View -->
-      <div id="lobbyWaitingView" class="hidden p-6 space-y-4">
-        <div class="rounded-xl bg-blue-950/80 border border-amber-400/50 p-4 text-center">
-          <div class="text-[11px] font-bold text-blue-200">친구에게 알려줄 4자리 방 코드</div>
-          <div id="waitingRoomCode" class="text-4xl font-black text-amber-300 tracking-[0.28em] mt-1">0000</div>
-          <button id="btnCopyRoomCode" type="button" class="mt-2 px-3 py-1 rounded-full bg-amber-400/20 hover:bg-amber-400/35 border border-amber-400/60 text-amber-200 text-xs font-bold transition">
-            📋 코드 복사
-          </button>
-        </div>
-
+      <div class="p-5 space-y-4">
         <div>
           <div class="flex items-center justify-between text-xs font-bold text-blue-200 mb-2">
-            <span>참여자 목록</span>
-            <span id="waitingCountText" class="text-amber-300">1 / 4명</span>
+            <span>참가자 목록</span>
+            <span id="waitingPlayerCount">1 / 4명</span>
           </div>
-          <div id="waitingPlayersList" class="space-y-1.5"></div>
+          <div id="waitingPlayersList" class="space-y-2"></div>
         </div>
 
         <div id="hostStartControls" class="hidden space-y-2">
-          <button id="btnStartMultiplayer" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-lg transition">
-            🎮 현재 인원으로 게임 시작
+          <button id="btnStartRoom" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-lg transition">
+            현재 인원으로 시작하기
           </button>
-          <button id="btnStartWithAI" type="button" class="w-full py-2.5 rounded-xl bg-blue-900 hover:bg-blue-800 border border-blue-500/60 text-blue-100 font-bold text-xs transition">
-            🤖 빈 자리 AI 채우고 바로 시작
+          <button id="btnStartWithAI" type="button" class="w-full py-2.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/60 text-amber-200 font-extrabold text-xs transition">
+            🤖 빈 자리는 AI로 채우고 바로 시작
           </button>
         </div>
 
-        <div id="guestWaitingNote" class="hidden text-center text-xs text-blue-200/80 py-2">
-          방장이 게임을 시작할 때까지 잠시 기다려 주세요…
+        <div id="guestWaitMsg" class="hidden text-center text-xs text-blue-200/85 py-2">
+          방장이 게임을 시작할 때까지 기다리고 있습니다...
         </div>
 
-        <button id="btnLeaveWaiting" type="button" class="w-full py-2 rounded-xl bg-slate-900/70 hover:bg-slate-800 text-slate-300 font-bold text-xs transition">
+        <button id="btnLeaveWaiting" type="button" class="w-full py-2 rounded-xl bg-blue-950/80 hover:bg-blue-900 border border-blue-700/60 text-blue-200 font-bold text-xs transition">
           방 나가기
         </button>
       </div>
@@ -611,19 +636,17 @@
       <div class="p-5 overflow-y-auto custom-scroll space-y-3 text-xs sm:text-sm text-blue-100/90 leading-relaxed">
         <div>
           <h3 class="font-extrabold text-amber-300 mb-1">1. 승리 조건 &amp; 첫 등록 (30점)</h3>
-          <p>받침대의 모든 타일을 가장 먼저 내려놓으면 승리합니다. 첫 등록 시에는 내 패만으로 합계 <b>30점 이상</b>의 유효한 세트(<b>789</b> 연속 런 또는 <b>777</b> 같은 숫자 그룹)를 만들어 내려놓아야 합니다.</p>
-          <p class="mt-1">더미가 모두 소진되면 즉시 끝나지 않고 <b>마지막 패를 뽑은 플레이어 차례까지 1바퀴 더</b> 진행한 뒤 남은 패 합계로 승부합니다. 패 합계가 가장 적은 1등의 마이너스 점수를 0으로 만드는 만큼 다른 플레이어 점수에 각각 더하고, 그 보정 점수들의 합이 1등의 점수가 됩니다.</p>
+          <p>받침대의 모든 타일을 가장 먼저 내려놓으면 승리합니다. 첫 등록 시에는 내 패만으로 합계 <b>30점 이상</b>의 유효한 세트(<b>789</b> 연속 런 또는 <b>777</b> 같은 숫자 그룹)를 내려놓아야 합니다.</p>
+          <p class="mt-1">첫 등록 전 30점 미만이나 미완성 패를 내려놓은 채 40초가 지나면 패를 즉시 자동 회수하고 <b>1장</b>을 받습니다. 첫 등록 이후에는 미완성 패가 남았을 때만 회수 + 페널티 <b>3장</b>을 받습니다.</p>
+          <p class="mt-1">더미가 모두 소진되면 다음 사람부터 한 바퀴(각 최대 40초) 돌고, <b>마지막 카드를 뽑은 사람</b>이 차례를 마치면 남은 패 합계로 점수와 등수를 계산합니다.</p>
         </div>
         <div>
-          <h3 class="font-extrabold text-amber-300 mb-1">2. 40초 시간 제한 &amp; 페널티</h3>
-          <p><b>첫 등록 전</b>에 메이드가 안 된 패나 총합 30점 미만인 패를 내려놓은 채 40초가 지나면 내려놓은 패를 즉시 자동 회수하고 <b>1장</b>을 받습니다. <b>첫 등록 이후</b> 40초가 지났을 때 보드에 미완성 패가 남아 있으면 미완성 패를 회수하고 <b>페널티 3장</b>을 받으며, 보드의 패가 모두 메이드 상태이거나 내지 않은 채 시간이 끝나면 메이드 패를 유지하고 <b>1장</b>을 받습니다.</p>
-        </div>
-        <div>
-          <h3 class="font-extrabold text-amber-300 mb-1">3. 스마트 조작</h3>
+          <h3 class="font-extrabold text-amber-300 mb-1">2. 스마트 조작</h3>
           <ul class="list-disc pl-5 space-y-1">
-            <li><b>우측 789 / 777 버튼 &amp; 수동 정렬</b>: 상대 턴에도 언제든 정렬하거나 받침대 안에서 직접 드래그해 순서를 바꿀 수 있습니다.</li>
-            <li><b>조건 충족 연속 선택</b>: 타일을 누르고 있으면 <b>0.25초마다</b> 같은 색 연속 숫자나 다른 색 같은 숫자 조건을 만족하는 뒤쪽 패만 순차 선택되며, 그대로 드래그해 옮길 수 있습니다.</li>
-            <li><b>자석 스냅 &amp; 자동 분리</b>: 메이드 패 옆에 다른 패를 놓으면 기존 메이드 패가 빈 자리로 비켜서고, 긴 런 중간에 패를 끼워 넣으면 <b>✂ 자동 분리</b>됩니다.</li>
+            <li><b>우측 789 / 777 버튼</b>: 상대 턴에도 언제든 정렬 가능하며, 받침대 안에서 직접 드래그해 수동 정렬도 가능합니다.</li>
+            <li><b>조건 충족 연속 선택</b>: 타일을 누르고 있으면 <b>0.25초마다</b> 같은 색 연속 숫자나 다른 색 같은 숫자 조건을 만족하는 뒤쪽 패만 선택됩니다.</li>
+            <li><b>끼워넣기 · 좌우 자동 밀기 · 자동 분리</b>: 같은 숫자 3개 사이에 4번째 숫자를 끼워 넣거나, 판 위 패의 왼쪽·오른쪽에 붙일 때 공간이 부족하면 주변 패가 자동으로 자리를 만들어 줍니다. 긴 런 중간에 패를 끼워 넣으면 <b>✂ 자동 분리</b>됩니다.</li>
+            <li><b>상관없는 패 차단</b>: 조합할 수 없는 패 옆에는 붙일 수 없습니다.</li>
           </ul>
         </div>
       </div>
@@ -654,30 +677,6 @@
   (() => {
     'use strict';
 
-    // ==================== SOCKET & SESSION ====================
-    const hasSocketIO = typeof window.io === 'function';
-    const socket = hasSocketIO
-      ? window.io()
-      : {
-          emit: (_ev, _data, cb) => { if (typeof cb === 'function') cb({ error: '실시간 서버에 연결되지 않았습니다.' }); },
-          on: () => {},
-        };
-
-    const offlineNotice = document.getElementById('offlineNotice');
-    if (!hasSocketIO && offlineNotice) offlineNotice.classList.remove('hidden');
-
-    function getOrCreateSessionId() {
-      let sid = '';
-      try { sid = localStorage.getItem('rummikub_session_id') || ''; } catch (_e) {}
-      if (!sid) {
-        sid = 'rk-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36);
-        try { localStorage.setItem('rummikub_session_id', sid); } catch (_e) {}
-      }
-      return sid;
-    }
-
-    const sessionId = getOrCreateSessionId();
-
     // ==================== CONSTANTS ====================
     const COLORS = ['black', 'red', 'blue', 'orange'];
     const COLOR_ORDER = { black: 0, red: 1, blue: 2, orange: 3 };
@@ -685,14 +684,26 @@
     const GRID_ROWS = 8;
     const TURN_SECONDS = 40;
     const HOLD_STEP_SEC = 0.25;
-    const MAGNET_COL_THRESHOLD = 1.38;
-    const MAGNET_ROW_THRESHOLD = 0.78;
+    const MAGNET_COL_THRESHOLD = 1.42;
+    const MAGNET_ROW_THRESHOLD = 0.8;
     const AVATAR_STYLES = [
       { bg: 'from-sky-400 to-blue-700', emoji: '😎' },
       { bg: 'from-emerald-400 to-teal-700', emoji: '🧔' },
       { bg: 'from-amber-400 to-orange-700', emoji: '👩' },
       { bg: 'from-fuchsia-400 to-purple-700', emoji: '🕶️' },
     ];
+
+    // ==================== SESSION & STORAGE ====================
+    const STORAGE_NAME_KEY = 'rummikub_player_name';
+    const STORAGE_SID_KEY = 'rummikub_session_id';
+
+    let sessionId = localStorage.getItem(STORAGE_SID_KEY);
+    if (!sessionId) {
+      sessionId = 'sid-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      localStorage.setItem(STORAGE_SID_KEY, sessionId);
+    }
+
+    const socket = typeof io !== 'undefined' ? io() : null;
 
     // ==================== AUDIO ENGINE ====================
     let audioCtx = null;
@@ -727,7 +738,7 @@
       filter.frequency.value = isMagnet ? 1850 : 1400;
       filter.Q.value = 1.8;
       const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.32, now);
+      gain.gain.setValueAtTime(0.3, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
       noise.connect(filter);
       filter.connect(gain);
@@ -739,7 +750,7 @@
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(isMagnet ? 520 : 380, now);
       osc.frequency.exponentialRampToValueAtTime(160, now + 0.045);
-      oscGain.gain.setValueAtTime(0.18, now);
+      oscGain.gain.setValueAtTime(0.16, now);
       oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
       osc.connect(oscGain);
       oscGain.connect(ctx.destination);
@@ -838,8 +849,10 @@
 
     // ==================== CLIENT STATE ====================
     let selectedMaxPlayers = 4;
+    let pendingServerState = null;
+    let lastPreviewEmitAt = 0;
 
-    let state = {
+    const state = {
       code: null,
       phase: 'lobby',
       maxPlayers: 4,
@@ -857,6 +870,7 @@
       recentAITileIds: new Set(),
       hasBoardChanged: false,
       evalState: null,
+      gameOverData: null,
       viewColStart: 0,
       viewRowStart: 0,
       viewCols: 14,
@@ -865,7 +879,7 @@
       cellH: 64,
     };
 
-    let interact = {
+    const interact = {
       active: false,
       pointerId: null,
       pointerType: 'mouse',
@@ -882,7 +896,7 @@
       dragOriginY: 0,
       currX: 0,
       currY: 0,
-      dragLiftY: 14,
+      dragLiftY: 12,
       holdStart: 0,
       holdStage: 0,
       holdRaf: null,
@@ -890,33 +904,20 @@
       snapTarget: null,
     };
 
-    let lifted = { active: false, originType: null, tiles: [] };
-    let pendingServerState = null;
-    let prevBoardTilePositions = new Map();
-    let lastDragPreviewSent = 0;
-
-    // Dedicated ghost overlay inside boardGrid (updated without rebuilding DOM during drags)
-    const magnetGhost = document.createElement('div');
-    magnetGhost.id = 'magnetGhost';
-    magnetGhost.className = 'magnet-ghost';
-    magnetGhost.style.display = 'none';
-
-    // Dedicated overlay for watching other players drag tiles in real time
-    const remoteDragOverlay = document.createElement('div');
-    remoteDragOverlay.id = 'remoteDragOverlay';
-    remoteDragOverlay.className = 'remote-drag-overlay';
-    let remoteDragState = { active: false, playerName: '', row: 0, col: 0, tiles: [] };
+    const lifted = { active: false, originType: null, tiles: [] };
 
     // ==================== DOM REFS ====================
     const boardViewport = document.getElementById('boardViewport');
     const boardGrid = document.getElementById('boardGrid');
+    const magnetGhost = document.getElementById('magnetGhost');
+    const remoteDragGhost = document.getElementById('remoteDragGhost');
+    const woodRack = document.getElementById('woodRack');
     const rackRow0 = document.getElementById('rackRow0');
     const rackRow1 = document.getElementById('rackRow1');
-    const woodRack = document.getElementById('woodRack');
     const playersBar = document.getElementById('playersBar');
-    const poolCountBadge = document.getElementById('poolCountBadge');
     const roomCodeBadgeWrap = document.getElementById('roomCodeBadgeWrap');
     const hudRoomCode = document.getElementById('hudRoomCode');
+    const poolCountBadge = document.getElementById('poolCountBadge');
     const turnStatusText = document.getElementById('turnStatusText');
     const meldStatusBadge = document.getElementById('meldStatusBadge');
     const finalRoundBadge = document.getElementById('finalRoundBadge');
@@ -938,29 +939,21 @@
     const toastInner = document.getElementById('toastInner');
 
     const lobbyModal = document.getElementById('lobbyModal');
-    const lobbyEntryView = document.getElementById('lobbyEntryView');
-    const lobbyWaitingView = document.getElementById('lobbyWaitingView');
     const inputPlayerName = document.getElementById('inputPlayerName');
     const inputRoomCode = document.getElementById('inputRoomCode');
+    const lobbyError = document.getElementById('lobbyError');
+    const waitingModal = document.getElementById('waitingModal');
     const waitingRoomCode = document.getElementById('waitingRoomCode');
-    const waitingCountText = document.getElementById('waitingCountText');
+    const waitingPlayerCount = document.getElementById('waitingPlayerCount');
     const waitingPlayersList = document.getElementById('waitingPlayersList');
     const hostStartControls = document.getElementById('hostStartControls');
-    const guestWaitingNote = document.getElementById('guestWaitingNote');
+    const guestWaitMsg = document.getElementById('guestWaitMsg');
     const helpModal = document.getElementById('helpModal');
     const gameOverModal = document.getElementById('gameOverModal');
 
-    // Load saved nickname
-    try {
-      const savedName = localStorage.getItem('rummikub_nickname');
-      if (savedName) inputPlayerName.value = savedName;
-    } catch (_e) {}
-
-    function saveNickname() {
-      const name = (inputPlayerName.value || '').trim().slice(0, 14);
-      try { if (name) localStorage.setItem('rummikub_nickname', name); } catch (_e) {}
-      return name || '플레이어';
-    }
+    // Restore saved nickname
+    const savedName = localStorage.getItem(STORAGE_NAME_KEY);
+    if (savedName) inputPlayerName.value = savedName;
 
     let toastTimer = null;
     function showToast(msg, tone = 'info') {
@@ -978,7 +971,7 @@
       toastTimer = setTimeout(() => {
         toastBox.classList.add('opacity-0', 'translate-y-2');
         toastBox.classList.remove('opacity-100', 'translate-y-0');
-      }, 2400);
+      }, 2500);
     }
 
     let myTurnAlertTimer = null;
@@ -989,18 +982,28 @@
       myTurnAlertTimer = setTimeout(() => myTurnAlertEl.classList.add('hidden'), 2200);
     }
 
-    // ==================== HELPERS & VALIDATION ====================
+    function showLobbyError(msg) {
+      if (!msg) {
+        lobbyError.classList.add('hidden');
+        lobbyError.textContent = '';
+      } else {
+        lobbyError.textContent = msg;
+        lobbyError.classList.remove('hidden');
+      }
+    }
+
+    // ==================== HELPERS ====================
     function isMyTurn() {
       return state.phase === 'playing' && state.myPlayerIndex >= 0 && state.currentPlayerIndex === state.myPlayerIndex;
     }
 
-    function getRackTiles() {
+    function getMyRackTiles() {
       return state.myRack.filter(Boolean);
     }
 
-    function ensureRackCapacity() {
+    function ensureMyRackCapacity() {
       const minSlots = 20;
-      const count = getRackTiles().length;
+      const count = getMyRackTiles().length;
       const neededPerRow = Math.max(10, Math.ceil(count / 2) + 2);
       const targetLen = Math.max(minSlots, neededPerRow * 2);
       while (state.myRack.length < targetLen) state.myRack.push(null);
@@ -1008,12 +1011,13 @@
     }
 
     function addTileToMyRack(tile) {
-      ensureRackCapacity();
+      ensureMyRackCapacity();
       const emptyIdx = state.myRack.indexOf(null);
       if (emptyIdx !== -1) state.myRack[emptyIdx] = tile;
       else state.myRack.push(tile);
     }
 
+    // ==================== VALIDATION ====================
     function validateSet(tiles) {
       if (!tiles || tiles.length < 3) return { valid: false, type: null, points: 0 };
       const nonJokers = tiles.filter((t) => !t.isJoker);
@@ -1038,7 +1042,10 @@
             let pts = 0;
             for (let i = 0; i < tiles.length; i++) {
               const expected = startNum + i;
-              if (!tiles[i].isJoker && tiles[i].num !== expected) { ok = false; break; }
+              if (!tiles[i].isJoker && tiles[i].num !== expected) {
+                ok = false;
+                break;
+              }
               pts += expected;
             }
             if (ok) return { valid: true, type: 'run', points: pts };
@@ -1048,12 +1055,13 @@
       return { valid: false, type: null, points: 0 };
     }
 
-    // 두 장 이상이 같은 색 연속 숫자이거나 다른 색 같은 숫자(또는 유효한 3장 이상 세트)로 결합 가능한지 검사
+    // 2장 이상 조합 가능 여부 (상관없는 패 옆 붙이기 차단용)
     function canCombineTiles(tiles) {
-      if (!tiles || tiles.length <= 1) return true;
+      if (!tiles || tiles.length < 2) return true;
       if (tiles.length >= 3) return validateSet(tiles).valid;
-      const [a, b] = tiles;
-      if (a.isJoker || b.isJoker) return true;
+      const nonJokers = tiles.filter((t) => !t.isJoker);
+      if (nonJokers.length <= 1) return true;
+      const [a, b] = nonJokers;
       if (a.num === b.num && a.color !== b.color) return true;
       if (a.color === b.color && b.num === a.num + 1) return true;
       return false;
@@ -1075,13 +1083,15 @@
             }
             const check = validateSet(tiles);
             groups.push({ row: r, startCol, endCol: c - 1, tiles, ...check });
-          } else c++;
+          } else {
+            c++;
+          }
         }
       }
       return groups;
     }
 
-    // ==================== SORTING (789 & 777) ====================
+    // ==================== RACK SORTING (789 & 777) ====================
     function extractMadeRuns(tiles) {
       const used = new Set();
       const runs = [];
@@ -1097,14 +1107,19 @@
           while (n <= 13) {
             if (byNum.has(n)) {
               const seq = [];
-              while (n <= 13 && byNum.has(n)) { seq.push(byNum.get(n)); n++; }
+              while (n <= 13 && byNum.has(n)) {
+                seq.push(byNum.get(n));
+                n++;
+              }
               if (seq.length >= 3) {
                 seq.forEach((t) => used.add(t.id));
                 runs.push(seq);
                 found = true;
                 break;
               }
-            } else n++;
+            } else {
+              n++;
+            }
           }
         }
       }
@@ -1123,7 +1138,10 @@
           const seen = new Set();
           for (const color of COLORS) {
             const m = tiles.find((t) => !t.isJoker && !used.has(t.id) && t.num === num && t.color === color && !seen.has(color));
-            if (m) { seen.add(color); picked.push(m); }
+            if (m) {
+              seen.add(color);
+              picked.push(m);
+            }
           }
           if (picked.length >= 3) {
             picked.forEach((t) => used.add(t.id));
@@ -1158,19 +1176,31 @@
       let row = 0;
       let col = 0;
       for (const set of madeSets) {
-        if (col > 0 && col + set.length > slotsPerRow && row === 0) { row = 1; col = 0; }
+        if (col > 0 && col + set.length > slotsPerRow && row === 0) {
+          row = 1;
+          col = 0;
+        }
         for (const t of set) {
-          if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
+          if (col >= slotsPerRow && row === 0) {
+            row = 1;
+            col = 0;
+          }
           const idx = row * slotsPerRow + col;
           if (idx < rack.length) rack[idx] = t;
           else rack.push(t);
           col++;
         }
         col++;
-        if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
+        if (col >= slotsPerRow && row === 0) {
+          row = 1;
+          col = 0;
+        }
       }
       for (const t of remainingTiles) {
-        if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
+        if (col >= slotsPerRow && row === 0) {
+          row = 1;
+          col = 0;
+        }
         const idx = row * slotsPerRow + col;
         if (idx < rack.length) rack[idx] = t;
         else rack.push(t);
@@ -1180,29 +1210,43 @@
       state.myRack = rack;
     }
 
+    function syncRackOrderToServer() {
+      if (socket && state.phase === 'playing') {
+        socket.emit('game:syncRack', { rack: state.myRack });
+      }
+    }
+
+    function syncBoardMoveToServer() {
+      if (socket && state.phase === 'playing' && isMyTurn()) {
+        socket.emit('game:syncMove', { board: state.board, rack: state.myRack }, (res) => {
+          if (res && res.error) showToast(res.error, 'error');
+        });
+      }
+    }
+
     function sortRackByRun() {
       if (state.phase !== 'playing') return;
       clearLifted();
-      const runPass = extractMadeRuns(getRackTiles());
+      const runPass = extractMadeRuns(getMyRackTiles());
       placeSortedGroupsOnMyRack(runPass.made, [...runPass.remaining].sort(compareByRun));
       playClack(true);
       renderRack();
-      socket.emit('game:syncRack', { rack: state.myRack });
+      syncRackOrderToServer();
       showToast(runPass.made.length > 0 ? `789 연속 정렬 (연속 메이드 ${runPass.made.length}세트 앞쪽 배치)` : '789 연속 정렬 완료');
     }
 
     function sortRackByGroup() {
       if (state.phase !== 'playing') return;
       clearLifted();
-      const grpPass = extractMadeGroups(getRackTiles());
+      const grpPass = extractMadeGroups(getMyRackTiles());
       placeSortedGroupsOnMyRack(grpPass.made, [...grpPass.remaining].sort(compareByGroup));
       playClack(true);
       renderRack();
-      socket.emit('game:syncRack', { rack: state.myRack });
+      syncRackOrderToServer();
       showToast(grpPass.made.length > 0 ? `777 숫자 정렬 (숫자 메이드 ${grpPass.made.length}세트 앞쪽 배치)` : '777 숫자 정렬 완료');
     }
 
-    // ==================== COMPATIBLE CHAIN & MADE SET DETECTION ====================
+    // ==================== COMPATIBLE FORWARD CHAIN & MADE SET ====================
     function getBoardContiguousGroup(row, col) {
       if (!state.board[row] || !state.board[row][col]) return [];
       let cStart = col;
@@ -1236,7 +1280,9 @@
       if (first.tile.isJoker) {
         if (startIdx + 1 >= items.length) return [first];
         const nextChain = getCompatibleForwardChain(items, startIdx + 1);
-        return nextChain.length >= 2 ? [first, ...nextChain] : [first];
+        return nextChain.length >= 2 && validateSet([first.tile, ...nextChain.map((x) => x.tile)]).valid
+          ? [first, ...nextChain]
+          : [first];
       }
 
       const runChain = [first];
@@ -1263,7 +1309,9 @@
         ) {
           runChain.push(cur);
           expectedNum++;
-        } else break;
+        } else {
+          break;
+        }
       }
 
       const groupChain = [first];
@@ -1276,45 +1324,46 @@
           groupChain.push(cur);
         } else if (cur.tile.isJoker && groupChain.length >= 2) {
           groupChain.push(cur);
-        } else break;
+        } else {
+          break;
+        }
       }
 
       return groupChain.length > runChain.length ? groupChain : runChain;
     }
 
     function findMadeSetForRackTile(rackIdx) {
+      if (!state.myRack[rackIdx]) return null;
       const clicked = state.myRack[rackIdx];
-      if (!clicked) return null;
 
-      // 1. Prefer an actually contiguous valid made set right where the user clicked
+      // 1) 클릭한 자리에 실제로 나란히 붙어 있는 유효 세트를 최우선 선택 (엉뚱한 줄 패 선택 방지)
       const contiguous = getRackRowContiguousItems(rackIdx);
-      const anchorIdx = contiguous.findIndex((item) => item.tile.id === clicked.id);
-      if (anchorIdx >= 0 && contiguous.length >= 3) {
-        const fullTiles = contiguous.map((x) => x.tile);
-        if (validateSet(fullTiles).valid) return fullTiles;
+      const localPos = contiguous.findIndex((x) => x.idx === rackIdx);
+      if (localPos >= 0 && contiguous.length >= 3) {
+        const allTiles = contiguous.map((x) => x.tile);
+        if (validateSet(allTiles).valid) return allTiles;
 
-        let bestSub = null;
-        for (let s = 0; s <= anchorIdx; s++) {
-          for (let e = Math.max(anchorIdx, s + 2); e < contiguous.length; e++) {
-            const sub = fullTiles.slice(s, e + 1);
-            const v = validateSet(sub);
-            if (v.valid && (!bestSub || sub.length > bestSub.tiles.length || (sub.length === bestSub.tiles.length && v.points > bestSub.points))) {
-              bestSub = { tiles: sub, points: v.points };
-            }
+        const forward = getCompatibleForwardChain(contiguous, localPos).map((x) => x.tile);
+        if (forward.length >= 3 && validateSet(forward).valid) return forward;
+
+        for (let s = 0; s <= localPos; s++) {
+          for (let e = contiguous.length - 1; e >= localPos; e--) {
+            if (e - s + 1 < 3) continue;
+            const sub = contiguous.slice(s, e + 1).map((x) => x.tile);
+            if (validateSet(sub).valid) return sub;
           }
         }
-        if (bestSub) return bestSub.tiles;
       }
 
-      // 2. Fallback: search rack for a valid made set containing clicked tile
-      const allTiles = getRackTiles();
-      const jokers = allTiles.filter((t) => t.isJoker && t.id !== clicked.id);
+      // 2) 나란히 붙어 있지 않은 경우에만 받침대 전체에서 메이드 세트 탐색
+      const allRackTiles = getMyRackTiles();
+      const jokers = allRackTiles.filter((t) => t.isJoker && t.id !== clicked.id);
       const candidates = [];
 
       if (!clicked.isJoker) {
         const groupTiles = [clicked];
         const usedColors = new Set([clicked.color]);
-        for (const t of allTiles) {
+        for (const t of allRackTiles) {
           if (!t.isJoker && t.id !== clicked.id && t.num === clicked.num && !usedColors.has(t.color)) {
             usedColors.add(t.color);
             groupTiles.push(t);
@@ -1331,7 +1380,7 @@
         }
 
         const byNum = new Map();
-        for (const t of allTiles) {
+        for (const t of allRackTiles) {
           if (!t.isJoker && t.color === clicked.color) {
             if (t.id === clicked.id || !byNum.has(t.num)) byNum.set(t.num, t);
           }
@@ -1353,14 +1402,69 @@
       return candidates[0].tiles;
     }
 
-    // ==================== MAGNETIC SNAP, AUTO-SPLIT & AUTO-RELOCATE ====================
-    function isAreaFreeOnBoard(row, col, len, ignoreIds) {
+    // ==================== BOARD SPACE, AUTO-PUSH, INSERT & SPLIT ====================
+    function isAreaFreeOn(board, row, col, len, ignoreIds = new Set()) {
       if (row < 0 || row >= GRID_ROWS || col < 0 || col + len > GRID_COLS) return false;
       for (let i = 0; i < len; i++) {
-        const occ = state.board[row][col + i];
+        const occ = board[row][col + i];
         if (occ && !ignoreIds.has(occ.id)) return false;
       }
       return true;
+    }
+
+    function isAreaFreeOnBoard(row, col, len, ignoreIds = new Set()) {
+      return isAreaFreeOn(state.board, row, col, len, ignoreIds);
+    }
+
+    function findNearestEmptySpotOn(board, prefRow, prefCol, len, ignoreIds = new Set()) {
+      let bestWithGap = null;
+      let bestGapDist = Infinity;
+      let bestAny = null;
+      let bestAnyDist = Infinity;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c <= GRID_COLS - len; c++) {
+          if (!isAreaFreeOn(board, r, c, len, ignoreIds)) continue;
+          const dist = Math.hypot(c - prefCol, (r - prefRow) * 2.2);
+          const leftTile = c > 0 ? board[r][c - 1] : null;
+          const rightTile = c + len < GRID_COLS ? board[r][c + len] : null;
+          const leftClear = !leftTile || ignoreIds.has(leftTile.id);
+          const rightClear = !rightTile || ignoreIds.has(rightTile.id);
+          if (leftClear && rightClear && dist < bestGapDist) {
+            bestGapDist = dist;
+            bestWithGap = { row: r, col: c };
+          }
+          if (dist < bestAnyDist) {
+            bestAnyDist = dist;
+            bestAny = { row: r, col: c };
+          }
+        }
+      }
+      return bestWithGap || bestAny;
+    }
+
+    function findNearestEmptySpot(prefRow, prefCol, len, ignoreIds = new Set()) {
+      return findNearestEmptySpotOn(state.board, prefRow, prefCol, len, ignoreIds);
+    }
+
+    function collectBlockingGroupsInRange(row, cStart, cEnd, ignoreIds) {
+      const blockers = [];
+      const seenStarts = new Set();
+      const lo = Math.max(0, cStart);
+      const hi = Math.min(GRID_COLS - 1, cEnd);
+      for (let c = lo; c <= hi; c++) {
+        const t = state.board[row][c];
+        if (!t || ignoreIds.has(t.id)) continue;
+        let gStart = c;
+        while (gStart > 0 && state.board[row][gStart - 1] && !ignoreIds.has(state.board[row][gStart - 1].id)) gStart--;
+        if (seenStarts.has(gStart)) continue;
+        seenStarts.add(gStart);
+        let gEnd = c;
+        while (gEnd < GRID_COLS - 1 && state.board[row][gEnd + 1] && !ignoreIds.has(state.board[row][gEnd + 1].id)) gEnd++;
+        const tiles = [];
+        for (let k = gStart; k <= gEnd; k++) tiles.push(state.board[row][k]);
+        blockers.push({ row, startCol: gStart, endCol: gEnd, tiles });
+      }
+      return blockers;
     }
 
     function findAutoSplitForGroup(groupTiles, insertedTiles) {
@@ -1376,33 +1480,137 @@
       return null;
     }
 
-    function findNearestEmptySpot(prefRow, prefCol, len, ignoreIds = new Set()) {
-      let bestWithGap = null;
-      let bestGapDist = Infinity;
-      let bestAny = null;
-      let bestAnyDist = Infinity;
-      for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c <= GRID_COLS - len; c++) {
-          if (!isAreaFreeOnBoard(r, c, len, ignoreIds)) continue;
-          const dist = Math.hypot(c - prefCol, (r - prefRow) * 2.2);
-          const leftTile = c > 0 ? state.board[r][c - 1] : null;
-          const rightTile = c + len < GRID_COLS ? state.board[r][c + len] : null;
-          const leftClear = !leftTile || ignoreIds.has(leftTile.id);
-          const rightClear = !rightTile || ignoreIds.has(rightTile.id);
-          if (leftClear && rightClear && dist < bestGapDist) { bestGapDist = dist; bestWithGap = { row: r, col: c }; }
-          if (dist < bestAnyDist) { bestAnyDist = dist; bestAny = { row: r, col: c }; }
+    // 같은 숫자 3개(또는 2개) 사이에 똑같은 숫자(다른 색상/조커) 끼워넣기 판별
+    function findGroupInsertForGroup(groupTiles, insertedTiles, insertAtIdx = 1) {
+      if (!groupTiles || groupTiles.length < 2 || groupTiles.length > 3) return null;
+      if (!insertedTiles || insertedTiles.length === 0 || groupTiles.length + insertedTiles.length > 4) return null;
+      const combinedCheck = validateSet([...groupTiles, ...insertedTiles]);
+      if (!combinedCheck.valid || combinedCheck.type !== 'group') return null;
+      const clampedIdx = Math.max(1, Math.min(groupTiles.length, insertAtIdx));
+      const newTiles = [
+        ...groupTiles.slice(0, clampedIdx),
+        ...insertedTiles,
+        ...groupTiles.slice(clampedIdx),
+      ];
+      return { newTiles, insertIdx: clampedIdx };
+    }
+
+    // 보드 전체에 연속 빈 칸이 부족할 때 기존 세트들을 깔끔하게 압축 정렬해 공간 확보
+    function compactBoardToMakeSpace(baseBoard, neededLen, ignoreIds = new Set()) {
+      const cleaned = baseBoard.map((r) => r.map((t) => (t && !ignoreIds.has(t.id) ? t : null)));
+      const groups = getBoardGroups(cleaned);
+      const nextBoard = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
+      let curR = 0;
+      let curC = 0;
+
+      for (const g of groups) {
+        const len = g.tiles.length;
+        if (curC > 0 && curC + len > GRID_COLS) {
+          curR++;
+          curC = 0;
+        }
+        if (curR >= GRID_ROWS || curC + len > GRID_COLS) return null;
+        for (let i = 0; i < len; i++) nextBoard[curR][curC + i] = g.tiles[i];
+        curC += len + 1;
+        if (curC >= GRID_COLS) {
+          curR++;
+          curC = 0;
         }
       }
-      return bestWithGap || bestAny;
+
+      const spot = findNearestEmptySpotOn(nextBoard, Math.min(GRID_ROWS - 1, curR), curC, neededLen);
+      if (!spot) return null;
+      return { board: nextBoard, spot };
+    }
+
+    // 지정 위치(row, startCol..startCol+len-1)에 놓기 위해 방해되는 주변 패들을 자동으로 비켜주기
+    function planPushBlockersAround(row, startCol, tilesToPlace, ignoreIds) {
+      const len = tilesToPlace.length;
+      if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
+
+      const blockers = collectBlockingGroupsInRange(row, Math.max(0, startCol - 1), Math.min(GRID_COLS - 1, startCol + len), ignoreIds);
+      const simBoard = state.board.map((r) => r.slice());
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          if (simBoard[r][c] && ignoreIds.has(simBoard[r][c].id)) simBoard[r][c] = null;
+        }
+      }
+      for (const b of blockers) {
+        for (let c = b.startCol; c <= b.endCol; c++) simBoard[b.row][c] = null;
+      }
+      for (let i = 0; i < len; i++) simBoard[row][startCol + i] = tilesToPlace[i];
+
+      const moves = [];
+      for (const b of blockers) {
+        const bLen = b.tiles.length;
+        let dest = null;
+        const preferRight = b.startCol >= startCol;
+        if (preferRight) {
+          for (let c = startCol + len + 1; c <= GRID_COLS - bLen; c++) {
+            if (!isAreaFreeOn(simBoard, row, c, bLen)) continue;
+            const lClear = c === 0 || !simBoard[row][c - 1];
+            const rClear = c + bLen >= GRID_COLS || !simBoard[row][c + bLen];
+            if (lClear && rClear) { dest = { row, col: c }; break; }
+          }
+        } else {
+          for (let c = startCol - bLen - 1; c >= 0; c--) {
+            if (!isAreaFreeOn(simBoard, row, c, bLen)) continue;
+            const lClear = c === 0 || !simBoard[row][c - 1];
+            const rClear = c + bLen >= GRID_COLS || !simBoard[row][c + bLen];
+            if (lClear && rClear) { dest = { row, col: c }; break; }
+          }
+        }
+        if (!dest) dest = findNearestEmptySpotOn(simBoard, row, b.startCol, bLen);
+        if (!dest) return null;
+        for (let i = 0; i < bLen; i++) simBoard[dest.row][dest.col + i] = b.tiles[i];
+        moves.push({ blocker: b, dest });
+      }
+      return { row, col: startCol, pushMoves: moves };
+    }
+
+    function planGroupInsertPlacement(row, gStart, gEnd, newTiles, ignoreIds) {
+      const len = newTiles.length;
+      const groupIgnore = new Set(ignoreIds);
+      for (let c = gStart; c <= gEnd; c++) {
+        if (state.board[row][c]) groupIgnore.add(state.board[row][c].id);
+      }
+
+      if (gStart + len <= GRID_COLS && isAreaFreeOnBoard(row, gStart, len, groupIgnore)) {
+        const lOk = gStart === 0 || !state.board[row][gStart - 1] || groupIgnore.has(state.board[row][gStart - 1].id);
+        const rOk = gStart + len >= GRID_COLS || !state.board[row][gStart + len] || groupIgnore.has(state.board[row][gStart + len].id);
+        if (lOk && rOk) return { mode: 'inplace', row, col: gStart };
+      }
+
+      const leftStart = gEnd - len + 1;
+      if (leftStart >= 0 && isAreaFreeOnBoard(row, leftStart, len, groupIgnore)) {
+        const lOk = leftStart === 0 || !state.board[row][leftStart - 1] || groupIgnore.has(state.board[row][leftStart - 1].id);
+        const rOk = leftStart + len >= GRID_COLS || !state.board[row][leftStart + len] || groupIgnore.has(state.board[row][leftStart + len].id);
+        if (lOk && rOk) return { mode: 'inplace', row, col: leftStart };
+      }
+
+      const candidateCols = [];
+      if (gStart + len <= GRID_COLS) candidateCols.push(gStart);
+      if (leftStart >= 0) candidateCols.push(leftStart);
+      for (const col of candidateCols) {
+        const pushed = planPushBlockersAround(row, col, newTiles, groupIgnore);
+        if (pushed) return { mode: 'push', row, col: pushed.col, pushMoves: pushed.pushMoves };
+      }
+
+      const near = findNearestEmptySpotOn(state.board, row, gStart, len, groupIgnore);
+      if (near) return { mode: 'relocate', row: near.row, col: near.col };
+
+      const compacted = compactBoardToMakeSpace(state.board, len, groupIgnore);
+      if (compacted) return { mode: 'compact', row: compacted.spot.row, col: compacted.spot.col, compactedBoard: compacted.board };
+      return null;
     }
 
     function findMagneticBoardTarget(clientX, clientY, draggingTiles) {
       const vpRect = boardViewport.getBoundingClientRect();
-      if (clientX < vpRect.left - 12 || clientX > vpRect.right + 12 || clientY < vpRect.top - 12 || clientY > vpRect.bottom + 4) {
+      if (clientX < vpRect.left - 24 || clientX > vpRect.right + 24 || clientY < vpRect.top - 24 || clientY > vpRect.bottom + 24) {
         return null;
       }
-      const rect = boardGrid.getBoundingClientRect();
 
+      const rect = boardGrid.getBoundingClientRect();
       const len = draggingTiles.length;
       const ignoreIds = new Set(draggingTiles.map((t) => t.id));
       const totalGroupW = len * state.cellW;
@@ -1410,40 +1618,14 @@
       const fCol = state.viewColStart + (groupLeftX - rect.left) / state.cellW;
       const fRow = state.viewRowStart + (clientY - rect.top - state.cellH / 2) / state.cellH;
 
-      // 보드 영역 밖으로 너무 멀리 벗어나면 배치 불가 처리 (바닥 아무데나 떨어지는 현상 방지)
-      if (fRow < -0.6 || fRow > GRID_ROWS - 0.4 || fCol < -0.8 || fCol + len > GRID_COLS + 0.8) {
-        return null;
-      }
-
-      // 0. Hovering over existing set -> auto-split check
-      const hoverRow = state.viewRowStart + Math.floor((clientY - rect.top) / state.cellH);
-      const hoverCol = state.viewColStart + Math.floor((clientX - rect.left) / state.cellW);
-      if (hoverRow >= 0 && hoverRow < GRID_ROWS && hoverCol >= 0 && hoverCol < GRID_COLS) {
-        const under = state.board[hoverRow][hoverCol];
-        if (under && !ignoreIds.has(under.id)) {
-          let gStart = hoverCol;
-          while (gStart > 0 && state.board[hoverRow][gStart - 1] && !ignoreIds.has(state.board[hoverRow][gStart - 1].id)) gStart--;
-          let gEnd = hoverCol;
-          while (gEnd < GRID_COLS - 1 && state.board[hoverRow][gEnd + 1] && !ignoreIds.has(state.board[hoverRow][gEnd + 1].id)) gEnd++;
-          const gTiles = [];
-          for (let c = gStart; c <= gEnd; c++) gTiles.push(state.board[hoverRow][c]);
-          const splitResult = findAutoSplitForGroup(gTiles, draggingTiles);
-          if (splitResult) {
-            return { type: 'board-split', row: hoverRow, col: gStart, groupStart: gStart, groupEnd: gEnd, splitResult, isMagnet: true, isValidMerge: true };
-          }
-          // 기존 패 위를 덮어쓸 때 자동 분리가 안 되면 다른 곳에 텔레포트하지 않고 배치 차단
-          return null;
-        }
-      }
-
-      const checkAdjacencyCompatible = (r, colPos) => {
+      function checkAdjacencyCompatible(r, col) {
         const testRow = state.board[r].map((t) => (t && !ignoreIds.has(t.id) ? t : null));
-        for (let i = 0; i < len; i++) testRow[colPos + i] = draggingTiles[i];
-        let s = colPos;
+        for (let i = 0; i < len; i++) testRow[col + i] = draggingTiles[i];
+        let s = col;
         while (s > 0 && testRow[s - 1]) s--;
-        let e = colPos + len - 1;
+        let e = col + len - 1;
         while (e < GRID_COLS - 1 && testRow[e + 1]) e++;
-        const touchesNeighbor = s < colPos || e > colPos + len - 1;
+        const touchesNeighbor = s < col || e > col + len - 1;
         if (!touchesNeighbor) return { touchesNeighbor: false, compatible: true, validMerge: false };
         const combined = testRow.slice(s, e + 1);
         return {
@@ -1451,9 +1633,50 @@
           compatible: canCombineTiles(combined),
           validMerge: validateSet(combined).valid,
         };
-      };
+      }
 
-      // 1. Magnetic attraction ONLY to compatible existing sets' left/right edges
+      // 0. 기존 패 위 호버 -> 같은 숫자 3장 끼워넣기 & 긴 런 자동 분리
+      const hoverRow = state.viewRowStart + Math.floor((clientY - rect.top) / state.cellH);
+      const hoverCol = state.viewColStart + Math.floor((clientX - rect.left) / state.cellW);
+      let hoveringOccupied = false;
+      if (hoverRow >= 0 && hoverRow < GRID_ROWS && hoverCol >= 0 && hoverCol < GRID_COLS) {
+        const under = state.board[hoverRow][hoverCol];
+        if (under && !ignoreIds.has(under.id)) {
+          hoveringOccupied = true;
+          let gStart = hoverCol;
+          while (gStart > 0 && state.board[hoverRow][gStart - 1] && !ignoreIds.has(state.board[hoverRow][gStart - 1].id)) gStart--;
+          let gEnd = hoverCol;
+          while (gEnd < GRID_COLS - 1 && state.board[hoverRow][gEnd + 1] && !ignoreIds.has(state.board[hoverRow][gEnd + 1].id)) gEnd++;
+          const gTiles = [];
+          for (let c = gStart; c <= gEnd; c++) gTiles.push(state.board[hoverRow][c]);
+
+          const insertOffset = Math.max(1, Math.min(gTiles.length, Math.round((clientX - rect.left) / state.cellW + state.viewColStart - gStart)));
+          const groupInsert = findGroupInsertForGroup(gTiles, draggingTiles, insertOffset);
+          if (groupInsert) {
+            const plan = planGroupInsertPlacement(hoverRow, gStart, gEnd, groupInsert.newTiles, ignoreIds);
+            if (plan) {
+              return {
+                type: 'board-group-insert',
+                row: hoverRow,
+                col: gStart,
+                groupStart: gStart,
+                groupEnd: gEnd,
+                newTiles: groupInsert.newTiles,
+                plan,
+                isMagnet: true,
+                isValidMerge: true,
+              };
+            }
+          }
+
+          const splitResult = findAutoSplitForGroup(gTiles, draggingTiles);
+          if (splitResult) {
+            return { type: 'board-split', row: hoverRow, col: gStart, groupStart: gStart, groupEnd: gEnd, splitResult, isMagnet: true, isValidMerge: true };
+          }
+        }
+      }
+
+      // 1. 기존 세트의 좌/우 끝 자석 스냅 + 막힌 패 자동 치우기
       let bestMagnet = null;
       let bestDist = Infinity;
       for (let r = 0; r < GRID_ROWS; r++) {
@@ -1463,37 +1686,161 @@
           const t = state.board[r][c];
           if (t && !ignoreIds.has(t.id)) {
             const gStart = c;
-            while (c < GRID_COLS && state.board[r][c] && !ignoreIds.has(state.board[r][c].id)) c++;
+            const gTiles = [];
+            while (c < GRID_COLS && state.board[r][c] && !ignoreIds.has(state.board[r][c].id)) {
+              gTiles.push(state.board[r][c]);
+              c++;
+            }
             const gEnd = c - 1;
 
-            const rightCol = gEnd + 1;
-            if (isAreaFreeOnBoard(r, rightCol, len, ignoreIds) && Math.abs(fCol - rightCol) <= MAGNET_COL_THRESHOLD) {
-              const adj = checkAdjacencyCompatible(r, rightCol);
-              if (adj.compatible) {
+            // 1-a. 오른쪽 끝 붙이기
+            const rightCombined = [...gTiles, ...draggingTiles];
+            if (canCombineTiles(rightCombined)) {
+              const rightCol = gEnd + 1;
+              const rightValidMerge = validateSet(rightCombined).valid;
+              if (rightCol + len <= GRID_COLS && Math.abs(fCol - rightCol) <= MAGNET_COL_THRESHOLD) {
                 const dist = Math.hypot(Math.abs(fCol - rightCol), Math.abs(fRow - r) * 1.4);
-                if (dist < bestDist) { bestDist = dist; bestMagnet = { row: r, col: rightCol, isValidMerge: adj.validMerge }; }
+                if (isAreaFreeOnBoard(r, rightCol, len, ignoreIds)) {
+                  const adj = checkAdjacencyCompatible(r, rightCol);
+                  if (adj.compatible && dist < bestDist) {
+                    bestDist = dist;
+                    bestMagnet = { row: r, col: rightCol, isValidMerge: adj.validMerge };
+                  } else if (!adj.compatible && dist < bestDist) {
+                    const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
+                    const pushed = planPushBlockersAround(r, rightCol, draggingTiles, targetIgnore);
+                    if (pushed && pushed.pushMoves.length > 0) {
+                      bestDist = dist;
+                      bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves };
+                    }
+                  }
+                } else if (dist < bestDist) {
+                  const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
+                  const pushed = planPushBlockersAround(r, rightCol, draggingTiles, targetIgnore);
+                  if (pushed && pushed.pushMoves.length > 0) {
+                    bestDist = dist;
+                    bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves };
+                  }
+                }
               }
             }
-            const leftCol = gStart - len;
-            if (isAreaFreeOnBoard(r, leftCol, len, ignoreIds) && Math.abs(fCol - leftCol) <= MAGNET_COL_THRESHOLD) {
-              const adj = checkAdjacencyCompatible(r, leftCol);
-              if (adj.compatible) {
+
+            // 1-b. 왼쪽 끝 붙이기 (좌측 패 자동 치우기 + 맨 왼쪽 끝 우측 밀기)
+            const leftCombined = [...draggingTiles, ...gTiles];
+            if (canCombineTiles(leftCombined)) {
+              const leftCol = gStart - len;
+              const leftValidMerge = validateSet(leftCombined).valid;
+              if (leftCol >= 0 && Math.abs(fCol - leftCol) <= MAGNET_COL_THRESHOLD) {
                 const dist = Math.hypot(Math.abs(fCol - leftCol), Math.abs(fRow - r) * 1.4);
-                if (dist < bestDist) { bestDist = dist; bestMagnet = { row: r, col: leftCol, isValidMerge: adj.validMerge }; }
+                if (isAreaFreeOnBoard(r, leftCol, len, ignoreIds)) {
+                  const adj = checkAdjacencyCompatible(r, leftCol);
+                  if (adj.compatible && dist < bestDist) {
+                    bestDist = dist;
+                    bestMagnet = { row: r, col: leftCol, isValidMerge: adj.validMerge };
+                  } else if (!adj.compatible && dist < bestDist) {
+                    const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
+                    const pushed = planPushBlockersAround(r, leftCol, draggingTiles, targetIgnore);
+                    if (pushed && pushed.pushMoves.length > 0) {
+                      bestDist = dist;
+                      bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves };
+                    }
+                  }
+                } else if (dist < bestDist) {
+                  const targetIgnore = new Set([...ignoreIds, ...gTiles.map((x) => x.id)]);
+                  const pushed = planPushBlockersAround(r, leftCol, draggingTiles, targetIgnore);
+                  if (pushed && pushed.pushMoves.length > 0) {
+                    bestDist = dist;
+                    bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves };
+                  }
+                }
+              } else if (leftCol < 0 && Math.abs(fCol - 0) <= MAGNET_COL_THRESHOLD) {
+                const shiftBy = -leftCol;
+                const newEnd = gEnd + shiftBy;
+                if (newEnd < GRID_COLS && isAreaFreeOnBoard(r, gEnd + 1, shiftBy, ignoreIds)) {
+                  const afterRight = newEnd + 1 < GRID_COLS ? state.board[r][newEnd + 1] : null;
+                  if (!afterRight || ignoreIds.has(afterRight.id)) {
+                    const dist = Math.hypot(Math.abs(fCol - 0), Math.abs(fRow - r) * 1.4);
+                    if (dist < bestDist) {
+                      bestDist = dist;
+                      bestMagnet = {
+                        row: r,
+                        col: 0,
+                        isValidMerge: leftValidMerge,
+                        shiftTargetRight: { row: r, gStart, gEnd, shiftBy, tiles: gTiles },
+                      };
+                    }
+                  }
+                }
               }
             }
-          } else c++;
+          } else {
+            c++;
+          }
         }
       }
 
       if (bestMagnet) {
-        return { type: 'board', row: bestMagnet.row, col: bestMagnet.col, isMagnet: true, isValidMerge: bestMagnet.isValidMerge };
+        return {
+          type: 'board',
+          row: bestMagnet.row,
+          col: bestMagnet.col,
+          isMagnet: true,
+          isValidMerge: bestMagnet.isValidMerge,
+          pushMoves: bestMagnet.pushMoves || null,
+          shiftTargetRight: bestMagnet.shiftTargetRight || null,
+        };
       }
 
-      // 2. Free placement at exact cursor spot (never teleport to unrelated distant spots)
+      if (hoveringOccupied) {
+        const baseCol0 = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
+        const baseRow0 = Math.max(0, Math.min(GRID_ROWS - 1, Math.round(fRow)));
+        const nearEmpty = findNearestEmptySpotOn(state.board, baseRow0, baseCol0, len, ignoreIds);
+        if (!nearEmpty) {
+          const compacted = compactBoardToMakeSpace(state.board, len, ignoreIds);
+          if (compacted) {
+            return {
+              type: 'board-compact',
+              row: compacted.spot.row,
+              col: compacted.spot.col,
+              compactedBoard: compacted.board,
+              isMagnet: false,
+              isValidMerge: false,
+            };
+          }
+        }
+        return null;
+      }
+
+      // 2. 자유 배치 (공간 부족 시 자동 밀기/정리, 상관없는 패 옆은 차단)
       const baseCol = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
       const baseRow = Math.max(0, Math.min(GRID_ROWS - 1, Math.round(fRow)));
       if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
+        const pushed = planPushBlockersAround(baseRow, baseCol, draggingTiles, ignoreIds);
+        if (pushed) {
+          return {
+            type: 'board',
+            row: pushed.row,
+            col: pushed.col,
+            isMagnet: false,
+            isValidMerge: false,
+            pushMoves: pushed.pushMoves,
+            autoMadeSpace: true,
+          };
+        }
+        const near = findNearestEmptySpotOn(state.board, baseRow, baseCol, len, ignoreIds);
+        if (near) {
+          return { type: 'board', row: near.row, col: near.col, isMagnet: false, isValidMerge: false, autoMadeSpace: true };
+        }
+        const compacted = compactBoardToMakeSpace(state.board, len, ignoreIds);
+        if (compacted) {
+          return {
+            type: 'board-compact',
+            row: compacted.spot.row,
+            col: compacted.spot.col,
+            compactedBoard: compacted.board,
+            isMagnet: false,
+            isValidMerge: false,
+          };
+        }
         return null;
       }
 
@@ -1507,28 +1854,19 @@
 
     function findRackDropTarget(clientX, clientY) {
       const rackRect = woodRack.getBoundingClientRect();
-      const padX = 16;
-      const padTop = 4;
-      const padBot = 24;
-      if (
-        clientX < rackRect.left - padX ||
-        clientX > rackRect.right + padX ||
-        clientY < rackRect.top - padTop ||
-        clientY > rackRect.bottom + padBot
-      ) {
+      if (clientX < rackRect.left - 18 || clientX > rackRect.right + 18 || clientY < rackRect.top - 6 || clientY > rackRect.bottom + 26) {
         return null;
       }
-
       const slots = woodRack.querySelectorAll('.rack-slot');
       let bestIdx = -1;
       let bestDist = Infinity;
       for (const slot of slots) {
-        const sr = slot.getBoundingClientRect();
-        const cx = (sr.left + sr.right) / 2;
-        const cy = (sr.top + sr.bottom) / 2;
-        const dist = Math.hypot(clientX - cx, (clientY - cy) * 1.4);
-        if (dist < bestDist) {
-          bestDist = dist;
+        const r = slot.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const d = Math.hypot(clientX - cx, clientY - cy);
+        if (d < bestDist) {
+          bestDist = d;
           bestIdx = parseInt(slot.dataset.rackIdx, 10);
         }
       }
@@ -1539,7 +1877,7 @@
     function createClassicJokerSVG(color, sizePx) {
       const stroke = color === 'red' ? '#c81912' : '#111827';
       return `
-        <svg width="${sizePx}" height="${sizePx}" viewBox="0 0 40 40" class="relative z-10" style="margin-top:-7%;">
+        <svg width="${sizePx}" height="${sizePx}" viewBox="0 0 40 40" class="relative z-10" style="margin-top:-2%; pointer-events:none;">
           <circle cx="20" cy="20" r="14.5" fill="#fffdf7" stroke="${stroke}" stroke-width="2.4"/>
           <path d="M9 12 C12 7, 16 6, 20 8 C24 6, 28 7, 31 12" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round"/>
           <circle cx="14.5" cy="17.5" r="1.9" fill="${stroke}"/>
@@ -1555,13 +1893,14 @@
 
     function buildTileElement(tile, width, height, extraClasses = '') {
       const el = document.createElement('div');
-      el.className = `rk-tile ${extraClasses}`;
+      el.className = `rk-tile ${extraClasses}`.trim();
       el.style.width = `${width}px`;
       el.style.height = `${height}px`;
       el.dataset.tileId = String(tile.id);
+      el.draggable = false;
 
       if (tile.isJoker) {
-        el.innerHTML = createClassicJokerSVG(tile.color, Math.round(Math.min(width, height) * 0.72));
+        el.innerHTML = createClassicJokerSVG(tile.color, Math.round(Math.min(width, height) * 0.68));
       } else {
         const numSpan = document.createElement('span');
         const ratio = tile.num >= 10 ? 0.62 : 0.74;
@@ -1583,7 +1922,7 @@
       return el;
     }
 
-    // ==================== DYNAMIC AUTO-SCALING BOARD DIMENSIONS ====================
+    // ==================== AUTO-SCALING BOARD DIMENSIONS ====================
     function computeBoardDimensions(lockScale = false) {
       const rect = boardViewport.getBoundingClientRect();
       const isNarrow = window.innerWidth < 640;
@@ -1681,7 +2020,6 @@
 
       ordered.forEach(({ p, idx }) => {
         const isCurr = idx === state.currentPlayerIndex && state.phase === 'playing';
-        const isMe = idx === state.myPlayerIndex;
         const av = AVATAR_STYLES[idx % AVATAR_STYLES.length];
 
         const seat = document.createElement('div');
@@ -1689,7 +2027,7 @@
         seat.innerHTML = `
           <div class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''}">
             <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-xl sm:text-2xl shadow-inner relative overflow-hidden">
-              <span class="${isCurr ? 'opacity-45' : ''}">${p.isAI ? '🤖' : (isMe ? '🧑' : av.emoji)}</span>
+              <span class="${isCurr ? 'opacity-45' : ''}">${p.isAI ? av.emoji : '🧑'}</span>
               ${isCurr ? `<span id="activeAvatarTimer" class="absolute inset-0 flex items-center justify-center text-lg sm:text-xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">${Math.max(0, state.timeLeft)}</span>` : ''}
             </div>
             ${isCurr ? `
@@ -1699,9 +2037,9 @@
               </svg>
             ` : ''}
             ${p.hasMelded ? '<span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 border border-white text-[10px] font-black text-slate-950 flex items-center justify-center shadow" title="30점 첫 등록 완료">★</span>' : ''}
-            ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-rose-500 border border-white text-[9px] font-black text-white flex items-center justify-center" title="연결 끊김">!</span>' : ''}
+            ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-rose-500 border border-white text-[9px] flex items-center justify-center" title="연결 끊김">!</span>' : ''}
           </div>
-          <div class="px-1.5 py-0.5 rounded bg-slate-950/70 border ${isMe ? 'border-amber-400/60' : 'border-blue-400/25'} text-[10px] font-bold text-blue-100 flex items-center gap-1 max-w-full shadow">
+          <div class="px-1.5 py-0.5 rounded bg-slate-950/70 border border-blue-400/25 text-[10px] font-bold text-blue-100 flex items-center gap-1 max-w-full shadow">
             <span class="truncate max-w-[36px] sm:max-w-[46px]">${p.name}</span>
             <span class="text-amber-300 font-black">${p.tileCount}</span>
           </div>
@@ -1730,18 +2068,18 @@
         hudRoomCode.textContent = state.code;
       } else {
         roomCodeBadgeWrap.classList.add('hidden');
+        roomCodeBadgeWrap.classList.remove('flex');
       }
 
       const curr = state.players[state.currentPlayerIndex];
-      const me = state.myPlayerIndex >= 0 ? state.players[state.myPlayerIndex] : null;
+      const me = state.players[state.myPlayerIndex];
       const evalRes = state.evalState;
 
       if (curr) {
         if (isMyTurn()) {
-          const reason = evalRes ? evalRes.reason : '내 차례입니다!';
-          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>내 차례 — ${reason}</span>`;
+          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>내 차례 — ${evalRes ? evalRes.reason : ''}</span>`;
         } else {
-          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping"></span><span>${curr.name} 진행 중...</span>`;
+          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping"></span><span>${curr.name}님의 차례...</span>`;
         }
       }
 
@@ -1758,7 +2096,9 @@
 
       if (state.finalRoundTurnsLeft !== null && state.phase === 'playing') {
         finalRoundBadge.classList.remove('hidden');
-        finalRoundBadge.textContent = `🔥 마지막 라운드 (${state.finalRoundTurnsLeft}턴 남음)`;
+        finalRoundBadge.textContent = state.finalRoundTurnsLeft === 1 && state.finalRoundTriggerName
+          ? `🔥 마지막 차례 (${state.finalRoundTriggerName}님 종료 시 정산)`
+          : `🔥 마지막 라운드 (${state.finalRoundTurnsLeft}턴 남음)`;
       } else {
         finalRoundBadge.classList.add('hidden');
       }
@@ -1774,66 +2114,11 @@
 
       document.querySelectorAll('#boardGrid .rk-tile, #woodRack .rk-tile').forEach((el) => {
         const id = Number(el.dataset.tileId);
+        el.classList.toggle('dragging-source', draggingIds.has(id));
         el.classList.toggle('lifted-selected', liftedIds.has(id));
         el.classList.toggle('hold-preview-selected', holdPreviewIds.has(id) && !isFullHold);
         el.classList.toggle('hold-preview-full', holdPreviewIds.has(id) && isFullHold);
-        el.style.opacity = draggingIds.has(id) ? '0.22' : '';
       });
-    }
-
-    function updateMagnetGhost(st) {
-      if (!interact.isDragging || !st || (st.type !== 'board' && st.type !== 'board-split' && st.type !== 'board-blocked')) {
-        magnetGhost.style.display = 'none';
-        return;
-      }
-      magnetGhost.style.display = '';
-      if (st.type === 'board-split') {
-        magnetGhost.className = 'magnet-ghost snapped-valid flex items-center justify-center';
-        magnetGhost.style.left = `${(st.groupStart - state.viewColStart) * state.cellW + 1}px`;
-        magnetGhost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
-        magnetGhost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
-        magnetGhost.style.height = `${state.cellH - 2}px`;
-        magnetGhost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow">✂ 자동 분리</span>';
-      } else if (st.type === 'board-blocked') {
-        magnetGhost.className = 'magnet-ghost snapped-blocked flex items-center justify-center';
-        magnetGhost.style.left = `${(st.col - state.viewColStart) * state.cellW + 1}px`;
-        magnetGhost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
-        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
-        magnetGhost.style.height = `${state.cellH - 2}px`;
-        magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-rose-950/90 text-rose-100 text-[9px] font-black shadow whitespace-nowrap">✕ 붙이기 불가</span>';
-      } else {
-        magnetGhost.className = 'magnet-ghost ' + (st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free');
-        magnetGhost.style.left = `${(st.col - state.viewColStart) * state.cellW + 1}px`;
-        magnetGhost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
-        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
-        magnetGhost.style.height = `${state.cellH - 2}px`;
-        magnetGhost.innerHTML = '';
-      }
-    }
-
-    function updateRemoteDragOverlay() {
-      if (!remoteDragState.active || isMyTurn() || !remoteDragState.tiles.length) {
-        remoteDragOverlay.style.display = 'none';
-        return;
-      }
-      const tileW = Math.max(14, state.cellW - 2);
-      const tileH = Math.max(20, state.cellH - 2);
-      remoteDragOverlay.innerHTML = '';
-      remoteDragOverlay.style.display = 'flex';
-      remoteDragOverlay.style.left = `${(remoteDragState.col - state.viewColStart) * state.cellW + 1}px`;
-      remoteDragOverlay.style.top = `${(remoteDragState.row - state.viewRowStart) * state.cellH + 1}px`;
-
-      for (const t of remoteDragState.tiles) {
-        const el = buildTileElement(t, tileW, tileH, 'shadow-xl');
-        el.style.opacity = '0.82';
-        el.style.boxShadow = '0 0 12px rgba(56, 189, 248, 0.9), 0 0 0 2px #38bdf8';
-        remoteDragOverlay.appendChild(el);
-      }
-
-      const tag = document.createElement('div');
-      tag.className = 'absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-sky-500 text-slate-950 text-[9px] font-black whitespace-nowrap shadow';
-      tag.textContent = `${remoteDragState.playerName} 이동 중`;
-      remoteDragOverlay.appendChild(tag);
     }
 
     function renderBoard(justSnappedIds = new Set()) {
@@ -1855,12 +2140,6 @@
         boardGrid.appendChild(frame);
       }
 
-      boardGrid.appendChild(magnetGhost);
-      updateMagnetGhost(interact.snapTarget);
-
-      boardGrid.appendChild(remoteDragOverlay);
-      updateRemoteDragOverlay();
-
       const tileW = Math.max(11, state.cellW - 2);
       const tileH = Math.max(16, state.cellH - 2);
 
@@ -1881,6 +2160,7 @@
           el.style.zIndex = '10';
 
           el.addEventListener('pointerdown', (e) => onTilePointerDown(e, 'board', tile, { row: r, col: c }, el));
+          el.addEventListener('mousedown', (e) => { if (e.button === 0) e.preventDefault(); });
           el.addEventListener('dragstart', (e) => e.preventDefault());
           el.addEventListener('contextmenu', (e) => e.preventDefault());
           boardGrid.appendChild(el);
@@ -1893,9 +2173,9 @@
     function renderRack() {
       rackRow0.innerHTML = '';
       rackRow1.innerHTML = '';
-      if (state.phase !== 'playing' && state.phase !== 'gameover') return;
+      if (state.phase === 'lobby' || state.phase === 'waiting') return;
 
-      ensureRackCapacity();
+      ensureMyRackCapacity();
       const rowSize = Math.floor(state.myRack.length / 2);
 
       const isNarrow = window.innerWidth < 640;
@@ -1922,6 +2202,7 @@
             onTilePointerDown(e, 'rack', tile, { idx: i }, el);
           };
           el.addEventListener('pointerdown', handleDown);
+          el.addEventListener('mousedown', (e) => { if (e.button === 0) e.preventDefault(); });
           el.addEventListener('dragstart', (e) => e.preventDefault());
           el.addEventListener('contextmenu', (e) => e.preventDefault());
           slot.addEventListener('pointerdown', (e) => {
@@ -1975,7 +2256,111 @@
       }
     }
 
-    // ==================== POINTER INTERACTION ====================
+    function updateMagnetGhost(st) {
+      if (!interact.isDragging || !st || (st.type !== 'board' && st.type !== 'board-split' && st.type !== 'board-group-insert' && st.type !== 'board-compact' && st.type !== 'board-blocked')) {
+        magnetGhost.style.display = 'none';
+        return;
+      }
+
+      const gridRect = boardGrid.getBoundingClientRect();
+      const vpRect = boardViewport.getBoundingClientRect();
+      const offsetX = gridRect.left - vpRect.left;
+      const offsetY = gridRect.top - vpRect.top;
+
+      magnetGhost.style.display = '';
+      if (st.type === 'board-group-insert') {
+        magnetGhost.className = 'magnet-ghost snapped-valid flex items-center justify-center';
+        magnetGhost.style.left = `${offsetX + (st.groupStart - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow whitespace-nowrap">+ 끼워넣기</span>';
+      } else if (st.type === 'board-split') {
+        magnetGhost.className = 'magnet-ghost snapped-valid flex items-center justify-center';
+        magnetGhost.style.left = `${offsetX + (st.groupStart - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow">✂ 자동 분리</span>';
+      } else if (st.type === 'board-compact') {
+        magnetGhost.className = 'magnet-ghost snapped-magnet flex items-center justify-center';
+        magnetGhost.style.left = `${offsetX + (st.col - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-sky-950/90 text-sky-200 text-[9px] font-black shadow whitespace-nowrap">✨ 자리 자동 확보</span>';
+      } else if (st.type === 'board-blocked') {
+        magnetGhost.className = 'magnet-ghost snapped-blocked flex items-center justify-center';
+        magnetGhost.style.left = `${offsetX + (st.col - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-rose-950/90 text-rose-100 text-[9px] font-black shadow whitespace-nowrap">✕ 붙이기 불가</span>';
+      } else {
+        magnetGhost.className = 'magnet-ghost ' + (st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free') + ((st.pushMoves || st.shiftTargetRight || st.autoMadeSpace) ? ' flex items-center justify-center' : '');
+        magnetGhost.style.left = `${offsetX + (st.col - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = st.autoMadeSpace
+          ? '<span class="px-1 py-0.5 rounded bg-sky-950/90 text-sky-200 text-[9px] font-black shadow whitespace-nowrap">✨ 자리 자동 확보</span>'
+          : st.pushMoves
+            ? '<span class="px-1 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[9px] font-black shadow whitespace-nowrap">⇄ 주변 자동 이동</span>'
+            : st.shiftTargetRight
+              ? '<span class="px-1 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[9px] font-black shadow whitespace-nowrap">우측 이동 →</span>'
+              : '';
+      }
+    }
+
+    function renderRemoteDragGhost(payload) {
+      if (!payload || !payload.active || !Array.isArray(payload.tiles) || payload.tiles.length === 0) {
+        remoteDragGhost.style.display = 'none';
+        remoteDragGhost.innerHTML = '';
+        return;
+      }
+      const gridRect = boardGrid.getBoundingClientRect();
+      const vpRect = boardViewport.getBoundingClientRect();
+      const offsetX = gridRect.left - vpRect.left;
+      const offsetY = gridRect.top - vpRect.top;
+
+      const tileW = Math.max(12, state.cellW - 2);
+      const tileH = Math.max(17, state.cellH - 2);
+      remoteDragGhost.style.display = 'flex';
+      remoteDragGhost.style.left = `${offsetX + (payload.col - state.viewColStart) * state.cellW}px`;
+      remoteDragGhost.style.top = `${offsetY + (payload.row - state.viewRowStart) * state.cellH - 18}px`;
+
+      remoteDragGhost.innerHTML = '';
+      const badge = document.createElement('div');
+      badge.className = 'mb-0.5 px-1.5 py-0.5 rounded bg-sky-950/90 border border-sky-400/70 text-[9px] font-extrabold text-sky-200 shadow whitespace-nowrap';
+      badge.textContent = `${payload.playerName || '상대'} 이동 중`;
+      remoteDragGhost.appendChild(badge);
+
+      const rowWrap = document.createElement('div');
+      rowWrap.className = 'flex gap-0.5 opacity-85';
+      for (const t of payload.tiles) {
+        rowWrap.appendChild(buildTileElement(t, tileW, tileH, 'from-rack-this-turn'));
+      }
+      remoteDragGhost.appendChild(rowWrap);
+    }
+
+    function emitDragPreviewThrottled(st) {
+      if (!socket || !isMyTurn()) return;
+      const now = performance.now();
+      if (now - lastPreviewEmitAt < 75) return;
+      lastPreviewEmitAt = now;
+      if (st && (st.type === 'board' || st.type === 'board-split' || st.type === 'board-group-insert' || st.type === 'board-compact')) {
+        socket.emit('game:dragPreview', {
+          active: true,
+          row: st.row,
+          col: st.col,
+          tiles: interact.selectedTiles,
+        });
+      } else {
+        socket.emit('game:dragPreview', { active: false });
+      }
+    }
+
+    // ==================== STABLE POINTER INTERACTION ====================
     function clearLifted() {
       if (!lifted.active) return;
       lifted.active = false;
@@ -1996,18 +2381,22 @@
       interact.captureEl = null;
     }
 
+    function isMatchingPointer(e) {
+      if (interact.pointerType === 'mouse') return e.pointerType === 'mouse' || e.type === 'mouseup';
+      return e.pointerId === interact.pointerId;
+    }
+
     function forceResetInteraction() {
       window.removeEventListener('pointermove', onGlobalPointerMove);
       window.removeEventListener('pointerup', onGlobalPointerUp);
-      window.removeEventListener('pointercancel', onGlobalPointerUp);
+      window.removeEventListener('pointercancel', onGlobalPointerCancel);
+      window.removeEventListener('mouseup', onMouseUpFallback);
       releaseActiveCapture();
       cancelHoldLoop();
       dragLayer.style.display = 'none';
       magnetGhost.style.display = 'none';
       highlightRackHover(null);
-      if (interact.isDragging && isMyTurn()) {
-        socket.emit('game:dragPreview', { active: false });
-      }
+      if (socket && isMyTurn()) socket.emit('game:dragPreview', { active: false });
       interact.active = false;
       interact.pointerId = null;
       interact.isDragging = false;
@@ -2023,11 +2412,8 @@
       if (originType === 'board' && !isMyTurn()) return;
 
       if (interact.active) {
-        if (e.pointerType === 'mouse' || interact.pointerType === 'mouse') {
-          forceResetInteraction();
-        } else {
-          return;
-        }
+        if (e.pointerType === 'mouse' || interact.pointerType === 'mouse') forceResetInteraction();
+        else return;
       }
 
       e.preventDefault();
@@ -2056,12 +2442,13 @@
       interact.dragOriginY = e.clientY;
       interact.currX = e.clientX;
       interact.currY = e.clientY;
-      interact.dragLiftY = e.pointerType === 'touch' ? 20 : 8;
+      interact.dragLiftY = e.pointerType === 'touch' ? 28 : 8;
       interact.holdStart = performance.now();
       interact.isDragging = false;
       interact.snapTarget = null;
 
-      if (interact.captureEl && interact.captureEl.setPointerCapture) {
+      // 터치에서만 포인터 캡처 사용 (마우스는 window 전역 리스너 + mouseup 백업으로 안정적 유지)
+      if (e.pointerType !== 'mouse' && interact.captureEl && interact.captureEl.setPointerCapture) {
         try { interact.captureEl.setPointerCapture(e.pointerId); } catch (_err) {}
       }
 
@@ -2081,7 +2468,6 @@
         interact.fullGroupTiles = forwardGroup;
         interact.selectedTiles = [tile];
         interact.holdStage = canHoldExpand ? 1 : 0;
-
         syncSelectionVisuals();
 
         if (canHoldExpand) {
@@ -2098,7 +2484,10 @@
 
       window.addEventListener('pointermove', onGlobalPointerMove, { passive: false });
       window.addEventListener('pointerup', onGlobalPointerUp);
-      window.addEventListener('pointercancel', onGlobalPointerUp);
+      window.addEventListener('pointercancel', onGlobalPointerCancel);
+      if (interact.pointerType === 'mouse') {
+        window.addEventListener('mouseup', onMouseUpFallback);
+      }
     }
 
     function startHoldLoop() {
@@ -2111,8 +2500,11 @@
         const circumference = 100.53;
         const newCount = Math.min(totalLen, 1 + Math.floor(elapsed / HOLD_STEP_SEC));
 
-        if (newCount >= totalLen) holdRingArc.style.strokeDashoffset = '0';
-        else holdRingArc.style.strokeDashoffset = String(circumference * (1 - (elapsed % HOLD_STEP_SEC) / HOLD_STEP_SEC));
+        if (newCount >= totalLen) {
+          holdRingArc.style.strokeDashoffset = '0';
+        } else {
+          holdRingArc.style.strokeDashoffset = String(circumference * (1 - (elapsed % HOLD_STEP_SEC) / HOLD_STEP_SEC));
+        }
 
         if (newCount !== interact.holdStage) {
           interact.holdStage = newCount;
@@ -2137,7 +2529,10 @@
     }
 
     function cancelHoldLoop() {
-      if (interact.holdRaf) { cancelAnimationFrame(interact.holdRaf); interact.holdRaf = null; }
+      if (interact.holdRaf) {
+        cancelAnimationFrame(interact.holdRaf);
+        interact.holdRaf = null;
+      }
       holdRingContainer.style.display = 'none';
     }
 
@@ -2145,7 +2540,8 @@
       interact.isDragging = true;
       cancelHoldLoop();
 
-      if (interact.draggingExistingLifted) {
+      if (lifted.active && lifted.tiles.some((t) => t.id === interact.anchorTile.id)) {
+        interact.selectedTiles = [...lifted.tiles];
         lifted.active = false;
         lifted.tiles = [];
         lifted.originType = null;
@@ -2176,9 +2572,6 @@
     }
 
     function computeDropTargetAt(clientX, clientY) {
-      // 손가락/커서 위치가 받침대 안이면 받침대 우선 (터치 오프셋 때문에 바닥으로 잘못 떨어지는 현상 방지)
-      const directRackTarget = findRackDropTarget(clientX, clientY);
-      if (directRackTarget) return directRackTarget;
       const dropX = clientX;
       const dropY = clientY - interact.dragLiftY;
       const rackTarget = findRackDropTarget(dropX, dropY);
@@ -2187,29 +2580,16 @@
       return null;
     }
 
-    function emitDragPreviewThrottled(snapTarget) {
-      if (!isMyTurn()) return;
-      const now = performance.now();
-      if (now - lastDragPreviewSent < 60) return;
-      lastDragPreviewSent = now;
-      if (snapTarget && (snapTarget.type === 'board' || snapTarget.type === 'board-split')) {
-        socket.emit('game:dragPreview', {
-          active: true,
-          row: snapTarget.row,
-          col: snapTarget.col,
-          tiles: interact.selectedTiles,
-        });
-      } else {
-        socket.emit('game:dragPreview', { active: false });
+    function highlightRackHover(target) {
+      document.querySelectorAll('.rack-slot.drag-over').forEach((el) => el.classList.remove('drag-over'));
+      if (target && target.type === 'rack' && target.idx >= 0) {
+        const el = document.querySelector(`.rack-slot[data-rack-idx="${target.idx}"]`);
+        if (el) el.classList.add('drag-over');
       }
     }
 
     function onGlobalPointerMove(e) {
-      if (!interact.active || e.pointerId !== interact.pointerId) return;
-      if (e.pointerType === 'mouse' && e.buttons === 0) {
-        onGlobalPointerUp(e);
-        return;
-      }
+      if (!interact.active || !isMatchingPointer(e)) return;
       e.preventDefault();
       interact.currX = e.clientX;
       interact.currY = e.clientY;
@@ -2223,10 +2603,10 @@
           : reachedMaxHold
             ? 5
             : interact.holdStage >= 1
-              ? (interact.pointerType === 'touch' ? 14 : 11)
+              ? (interact.pointerType === 'touch' ? 9 : 6)
               : 5;
 
-        if (distFromOrigin >= threshold || (reachedMaxHold && distFromStart >= 8)) {
+        if (distFromOrigin >= threshold || distFromStart >= (interact.pointerType === 'touch' ? 10 : 7)) {
           beginDragging();
         } else {
           return;
@@ -2234,43 +2614,37 @@
       }
 
       positionDragLayer(e.clientX, e.clientY);
-
       interact.snapTarget = computeDropTargetAt(e.clientX, e.clientY);
       updateMagnetGhost(interact.snapTarget);
       highlightRackHover(interact.snapTarget);
       emitDragPreviewThrottled(interact.snapTarget);
     }
 
-    function highlightRackHover(target) {
-      document.querySelectorAll('.rack-slot.drag-over').forEach((el) => el.classList.remove('drag-over'));
-      if (target && target.type === 'rack' && target.idx >= 0) {
-        const el = document.querySelector(`.rack-slot[data-rack-idx="${target.idx}"]`);
-        if (el) el.classList.add('drag-over');
-      }
+    function onGlobalPointerCancel(e) {
+      if (!interact.active || !isMatchingPointer(e)) return;
+      // 마우스 왼쪽 버튼이 여전히 눌려 있는 상태의 브라우저 임의 pointercancel 무시
+      if (interact.pointerType === 'mouse' && (e.buttons & 1) === 1) return;
+      onGlobalPointerUp(e);
     }
 
-    function flushPendingServerState() {
-      if (pendingServerState && !interact.active && !interact.isDragging) {
-        const queued = pendingServerState;
-        pendingServerState = null;
-        applyRoomState(queued);
-      }
+    function onMouseUpFallback(e) {
+      if (!interact.active || interact.pointerType !== 'mouse') return;
+      onGlobalPointerUp(e);
     }
 
     function onGlobalPointerUp(e) {
-      if (!interact.active || e.pointerId !== interact.pointerId) return;
+      if (!interact.active || !isMatchingPointer(e)) return;
       window.removeEventListener('pointermove', onGlobalPointerMove);
       window.removeEventListener('pointerup', onGlobalPointerUp);
-      window.removeEventListener('pointercancel', onGlobalPointerUp);
+      window.removeEventListener('pointercancel', onGlobalPointerCancel);
+      window.removeEventListener('mouseup', onMouseUpFallback);
 
       releaseActiveCapture();
       cancelHoldLoop();
       dragLayer.style.display = 'none';
       magnetGhost.style.display = 'none';
       highlightRackHover(null);
-      if (interact.isDragging && isMyTurn()) {
-        socket.emit('game:dragPreview', { active: false });
-      }
+      if (socket && isMyTurn()) socket.emit('game:dragPreview', { active: false });
 
       const wasCancelled = e.type === 'pointercancel';
       const wasDragging = interact.isDragging;
@@ -2279,8 +2653,10 @@
       const selected = [...interact.selectedTiles];
       const originType = interact.originType;
       const anchorPos = interact.anchorPos;
+      const releaseX = typeof e.clientX === 'number' ? e.clientX : interact.currX;
+      const releaseY = typeof e.clientY === 'number' ? e.clientY : interact.currY;
       const snapTarget = wasDragging
-        ? (computeDropTargetAt(e.clientX, e.clientY) || interact.snapTarget)
+        ? (computeDropTargetAt(releaseX, releaseY) || interact.snapTarget)
         : null;
 
       interact.active = false;
@@ -2309,19 +2685,25 @@
           playErrorBuzz();
           showToast('상관없는 패 옆에는 붙일 수 없습니다.', 'error');
           syncSelectionVisuals();
+        } else if (snapTarget && snapTarget.type === 'board-group-insert') {
+          didMutate = true;
+          applyGroupInsertOnBoard(selected, snapTarget);
         } else if (snapTarget && snapTarget.type === 'board-split') {
           didMutate = true;
           applyAutoSplitOnBoard(selected, snapTarget);
+        } else if (snapTarget && snapTarget.type === 'board-compact') {
+          didMutate = true;
+          applyCompactedBoardPlace(selected, snapTarget);
         } else if (snapTarget && snapTarget.type === 'board') {
           didMutate = true;
-          moveTilesToBoard(selected, snapTarget.row, snapTarget.col, snapTarget.isMagnet);
+          moveTilesToBoard(selected, snapTarget.row, snapTarget.col, snapTarget.isMagnet, snapTarget);
         } else if (snapTarget && snapTarget.type === 'rack') {
           didMutate = true;
           moveTilesToRack(selected, snapTarget.idx);
         } else {
           if (!isMyTurn() && originType === 'rack') {
             const vpRect = boardViewport.getBoundingClientRect();
-            if (e.clientY < vpRect.bottom) {
+            if (releaseY < vpRect.bottom) {
               showToast('내 차례에만 보드에 내려놓을 수 있습니다. (내 패 정렬은 가능)', 'info');
             }
           }
@@ -2351,14 +2733,11 @@
         syncSelectionVisuals();
       }
 
-      if (didMutate) {
-        pendingServerState = null;
-      } else {
-        flushPendingServerState();
-      }
+      if (didMutate) pendingServerState = null;
+      else flushPendingServerState();
     }
 
-    // ==================== TILE MOVEMENT & SERVER SYNC ====================
+    // ==================== TILE MOVEMENT ====================
     function closeGroupGapsOnBoard(removedSpots) {
       for (const { row, col } of removedSpots) {
         if (state.board[row][col]) continue;
@@ -2392,13 +2771,60 @@
       if (removedBoardSpots.length === 1) closeGroupGapsOnBoard(removedBoardSpots);
     }
 
-    function syncBoardMoveToServer() {
-      socket.emit('game:syncMove', { board: state.board, rack: state.myRack }, (res) => {
-        if (res && res.error) {
-          playErrorBuzz();
-          showToast(res.error, 'error');
+    function applyGroupInsertOnBoard(insertedTiles, target) {
+      const { row, groupStart, groupEnd, newTiles, plan } = target;
+      const insertedIds = new Set(insertedTiles.map((t) => t.id));
+      const animatedIds = new Set(newTiles.map((t) => t.id));
+
+      removeTilesFromCurrentLocations(insertedIds);
+
+      if (plan.mode === 'compact' && plan.compactedBoard) {
+        state.board = plan.compactedBoard;
+        for (let i = 0; i < newTiles.length; i++) state.board[plan.row][plan.col + i] = newTiles[i];
+        showToast('자리를 자동 확보해 같은 숫자 그룹에 끼워 넣었습니다!', 'success');
+      } else {
+        for (let c = groupStart; c <= groupEnd; c++) state.board[row][c] = null;
+        if (plan.mode === 'push' && Array.isArray(plan.pushMoves)) {
+          for (const m of plan.pushMoves) {
+            for (let c = m.blocker.startCol; c <= m.blocker.endCol; c++) state.board[m.blocker.row][c] = null;
+          }
         }
-      });
+        for (let i = 0; i < newTiles.length; i++) state.board[plan.row][plan.col + i] = newTiles[i];
+        if (plan.mode === 'push' && Array.isArray(plan.pushMoves)) {
+          for (const m of plan.pushMoves) {
+            for (let i = 0; i < m.blocker.tiles.length; i++) {
+              state.board[m.dest.row][m.dest.col + i] = m.blocker.tiles[i];
+              animatedIds.add(m.blocker.tiles[i].id);
+            }
+          }
+        }
+        showToast(
+          plan.mode === 'inplace'
+            ? '같은 숫자 그룹 사이에 끼워 넣었습니다!'
+            : '자리를 자동 확보해 같은 숫자 그룹에 끼워 넣었습니다!',
+          'success'
+        );
+      }
+
+      playHoldStage(2);
+      playClack(true);
+      computeBoardDimensions(false);
+      renderBoard(animatedIds);
+      renderRack();
+      syncBoardMoveToServer();
+    }
+
+    function applyCompactedBoardPlace(tiles, target) {
+      const ids = new Set(tiles.map((t) => t.id));
+      removeTilesFromCurrentLocations(ids);
+      state.board = target.compactedBoard;
+      for (let i = 0; i < tiles.length; i++) state.board[target.row][target.col + i] = tiles[i];
+      playClack(true);
+      showToast('공간이 부족해 보드를 자동 정리하고 자리를 만들었습니다!', 'success');
+      computeBoardDimensions(false);
+      renderBoard(ids);
+      renderRack();
+      syncBoardMoveToServer();
     }
 
     function applyAutoSplitOnBoard(insertedTiles, splitTarget) {
@@ -2430,59 +2856,68 @@
       syncBoardMoveToServer();
     }
 
-    function moveTilesToBoard(tiles, row, col, isMagnet) {
+    function moveTilesToBoard(tiles, row, col, isMagnet, snapTarget = null) {
       const ids = new Set(tiles.map((t) => t.id));
-      if (!isAreaFreeOnBoard(row, col, tiles.length, ids)) {
-        playErrorBuzz();
-        renderAll();
+
+      if (snapTarget && Array.isArray(snapTarget.pushMoves) && snapTarget.pushMoves.length > 0) {
+        removeTilesFromCurrentLocations(ids);
+        const animatedIds = new Set(ids);
+
+        for (const m of snapTarget.pushMoves) {
+          for (let c = m.blocker.startCol; c <= m.blocker.endCol; c++) state.board[m.blocker.row][c] = null;
+        }
+        for (let i = 0; i < tiles.length; i++) state.board[row][col + i] = tiles[i];
+        for (const m of snapTarget.pushMoves) {
+          for (let i = 0; i < m.blocker.tiles.length; i++) {
+            state.board[m.dest.row][m.dest.col + i] = m.blocker.tiles[i];
+            animatedIds.add(m.blocker.tiles[i].id);
+          }
+        }
+
+        playClack(true);
+        showToast(snapTarget.autoMadeSpace ? '자리를 자동 확보해 내려놓았습니다!' : '주변 패를 자동 이동하고 붙였습니다!', 'success');
+        computeBoardDimensions(false);
+        renderBoard(animatedIds);
+        renderRack();
+        syncBoardMoveToServer();
         return;
       }
 
-      // 놓을 위치의 좌우 인접 패가 있을 때 서로 상관없는 패면 붙이기 차단
-      const getNeighborExcluding = (r, startC, dir) => {
-        const arr = [];
-        let c = startC;
-        while (c >= 0 && c < GRID_COLS && state.board[r][c] && !ids.has(state.board[r][c].id)) {
-          arr.push({ tile: state.board[r][c], row: r, col: c });
-          c += dir;
-        }
-        return dir < 0 ? arr.reverse() : arr;
-      };
+      if (snapTarget && snapTarget.shiftTargetRight) {
+        const sh = snapTarget.shiftTargetRight;
+        removeTilesFromCurrentLocations(ids);
+        for (let c = sh.gStart; c <= sh.gEnd; c++) state.board[sh.row][c] = null;
+        for (let i = 0; i < tiles.length; i++) state.board[sh.row][i] = tiles[i];
+        for (let i = 0; i < sh.tiles.length; i++) state.board[sh.row][sh.gStart + sh.shiftBy + i] = sh.tiles[i];
+        const animatedIds = new Set([...ids, ...sh.tiles.map((t) => t.id)]);
+        playClack(true);
+        showToast('기존 패를 오른쪽으로 밀어 왼쪽에 붙였습니다!', 'success');
+        computeBoardDimensions(false);
+        renderBoard(animatedIds);
+        renderRack();
+        syncBoardMoveToServer();
+        return;
+      }
 
-      const leftNeighbor = col > 0 ? getNeighborExcluding(row, col - 1, -1) : [];
-      const rightNeighbor = col + tiles.length < GRID_COLS ? getNeighborExcluding(row, col + tiles.length, 1) : [];
-      const leftTiles = leftNeighbor.map((x) => x.tile);
-      const rightTiles = rightNeighbor.map((x) => x.tile);
-      const hasNeighbor = leftTiles.length > 0 || rightTiles.length > 0;
-      const combinedTiles = [...leftTiles, ...tiles, ...rightTiles];
-
-      if (hasNeighbor && !canCombineTiles(combinedTiles)) {
-        const leftWasMade = leftTiles.length >= 3 && validateSet(leftTiles).valid;
-        const rightWasMade = rightTiles.length >= 3 && validateSet(rightTiles).valid;
-        if (leftWasMade && rightTiles.length === 0) {
-          const splitRes = findAutoSplitForGroup(leftTiles, tiles);
-          if (splitRes) {
-            applyAutoSplitOnBoard(tiles, { row, groupStart: leftNeighbor[0].col, groupEnd: leftNeighbor[leftNeighbor.length - 1].col, splitResult: splitRes });
-            return;
-          }
-        }
-        if (rightWasMade && leftTiles.length === 0) {
-          const splitRes = findAutoSplitForGroup(rightTiles, tiles);
-          if (splitRes) {
-            applyAutoSplitOnBoard(tiles, { row, groupStart: rightNeighbor[0].col, groupEnd: rightNeighbor[rightNeighbor.length - 1].col, splitResult: splitRes });
-            return;
-          }
-        }
+      if (!isAreaFreeOnBoard(row, col, tiles.length, ids)) {
         playErrorBuzz();
-        showToast('상관없는 패 옆에는 붙일 수 없습니다.', 'error');
-        renderAll();
+        syncSelectionVisuals();
         return;
       }
 
       removeTilesFromCurrentLocations(ids);
+
+      const leftNeighbor = (col > 0 && state.board[row][col - 1]) ? getBoardContiguousGroup(row, col - 1) : [];
+      const rightNeighbor = (col + tiles.length < GRID_COLS && state.board[row][col + tiles.length]) ? getBoardContiguousGroup(row, col + tiles.length) : [];
+      const leftTiles = leftNeighbor.map((x) => x.tile);
+      const rightTiles = rightNeighbor.map((x) => x.tile);
+
       for (let i = 0; i < tiles.length; i++) state.board[row][col + i] = tiles[i];
 
       playClack(isMagnet);
+      if (snapTarget && snapTarget.autoMadeSpace) {
+        showToast('가까운 빈 자리를 확보해 내려놓았습니다!', 'success');
+      }
       computeBoardDimensions(false);
       renderBoard(ids);
       renderRack();
@@ -2500,14 +2935,13 @@
       if (fromBoard && tiles.some((t) => !state.playedFromRackIds.has(t.id))) {
         playErrorBuzz();
         showToast('바닥에 원래 있던 타일은 내 패로 가져올 수 없습니다.', 'error');
-        renderAll();
+        syncSelectionVisuals();
         return;
       }
 
-      ensureRackCapacity();
+      ensureMyRackCapacity();
       const ids = new Set(tiles.map((t) => t.id));
 
-      // Single-tile swap inside rack
       if (!fromBoard && tiles.length === 1 && targetIdx >= 0 && targetIdx < state.myRack.length && state.myRack[targetIdx] && state.myRack[targetIdx].id !== tiles[0].id) {
         const srcIdx = state.myRack.findIndex((t) => t && t.id === tiles[0].id);
         if (srcIdx !== -1) {
@@ -2516,7 +2950,7 @@
           state.myRack[srcIdx] = displaced;
           playClack(false);
           renderRack();
-          socket.emit('game:syncRack', { rack: state.myRack });
+          syncRackOrderToServer();
           return;
         }
       }
@@ -2550,7 +2984,9 @@
             for (let i = emptyPos; i > insertAt; i--) state.myRack[i] = state.myRack[i - 1];
             state.myRack[insertAt] = t;
             insertAt++;
-          } else addTileToMyRack(t);
+          } else {
+            addTileToMyRack(t);
+          }
         }
       }
 
@@ -2562,60 +2998,57 @@
         syncBoardMoveToServer();
       } else {
         renderRack();
-        socket.emit('game:syncRack', { rack: state.myRack });
+        syncRackOrderToServer();
       }
     }
 
-    // ==================== SOCKET EVENTS & LOBBY ====================
+    // ==================== WAITING ROOM & GAME OVER UI ====================
     function renderWaitingRoom() {
       waitingRoomCode.textContent = state.code || '----';
-      waitingCountText.textContent = `${state.players.length} / ${state.maxPlayers}명`;
+      waitingPlayerCount.textContent = `${state.players.length} / ${state.maxPlayers}명`;
       waitingPlayersList.innerHTML = '';
 
-      state.players.forEach((p) => {
+      state.players.forEach((p, idx) => {
+        const av = AVATAR_STYLES[idx % AVATAR_STYLES.length];
         const row = document.createElement('div');
-        row.className = 'flex items-center justify-between px-3 py-2 rounded-xl bg-blue-950/75 border border-blue-700/60 text-xs';
+        row.className = 'flex items-center justify-between px-3 py-2 rounded-xl bg-blue-950/75 border border-blue-700/60';
         row.innerHTML = `
-          <div class="flex items-center gap-2 font-bold text-white">
-            <span>${p.isAI ? '🤖' : '👤'}</span>
-            <span>${p.name}</span>
-            ${p.isHost ? '<span class="px-1.5 py-0.5 rounded bg-amber-400/25 text-amber-300 text-[10px]">방장</span>' : ''}
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-base">${p.isAI ? av.emoji : '🧑'}</div>
+            <div class="font-extrabold text-sm text-white">${p.name} ${p.sessionId === sessionId ? '<span class="text-amber-300 text-xs">(나)</span>' : ''}</div>
           </div>
-          <span class="text-[11px] ${p.connected ? 'text-emerald-300' : 'text-rose-300'}">${p.connected ? '대기 중' : '연결 끊김'}</span>
+          <span class="text-[11px] font-bold ${p.isHost ? 'text-amber-300' : 'text-blue-200/75'}">${p.isHost ? '👑 방장' : '참가자'}</span>
         `;
         waitingPlayersList.appendChild(row);
       });
 
-      const amHost = state.hostSessionId === sessionId;
-      hostStartControls.classList.toggle('hidden', !amHost);
-      guestWaitingNote.classList.toggle('hidden', amHost);
+      const isHost = state.hostSessionId === sessionId;
+      hostStartControls.classList.toggle('hidden', !isHost);
+      guestWaitMsg.classList.toggle('hidden', isHost);
     }
 
     function renderGameOver(data) {
+      if (!data) return;
       document.getElementById('winnerTitle').textContent = `🏆 ${data.winnerName} 승리!`;
-      document.getElementById('winnerSubtitle').textContent = data.subtitle || '';
+      document.getElementById('winnerSubtitle').textContent = data.subtitle || '게임이 종료되었습니다.';
       const scoreTable = document.getElementById('scoreTable');
       scoreTable.innerHTML = '';
 
-      (data.rows || []).forEach((r) => {
+      (data.rows || []).forEach((r, idx) => {
+        const rankNum = typeof r.rank === 'number' ? r.rank : (idx + 1);
         const adjScore = typeof r.adjustedScore === 'number'
           ? r.adjustedScore
           : (r.isWinner ? data.totalLoserPenalty : -r.penalty);
         const rawSumText = typeof r.rawSum === 'number' ? ` · 패 합계 ${r.rawSum}점` : '';
-        const adjustNote = !r.isWinner && data.minSum > 0
-          ? ` (-${r.rawSum}+${data.minSum})`
-          : '';
-        const scoreLabel = r.isWinner
-          ? `+${adjScore}점`
-          : (adjScore === 0 ? '0점' : `${adjScore}점`);
-        const scoreColor = r.isWinner
-          ? 'text-emerald-300'
-          : (adjScore === 0 ? 'text-slate-300' : 'text-rose-300');
+        const adjustNote = !r.isWinner && data.minSum > 0 ? ` (-${r.rawSum}+${data.minSum})` : '';
+        const scoreLabel = r.isWinner ? `+${adjScore}점` : (adjScore === 0 ? '0점' : `${adjScore}점`);
+        const scoreColor = r.isWinner ? 'text-emerald-300' : (adjScore === 0 ? 'text-slate-300' : 'text-rose-300');
 
         const row = document.createElement('div');
         row.className = `flex items-center justify-between px-3.5 py-2.5 rounded-xl border ${r.isWinner ? 'bg-amber-400/20 border-amber-300' : 'bg-blue-950/80 border-blue-800'}`;
         row.innerHTML = `
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2.5">
+            <span class="px-1.5 py-0.5 rounded-md text-[11px] font-black ${r.isWinner ? 'bg-amber-400 text-slate-950' : 'bg-blue-900 text-blue-200'}">${rankNum}등</span>
             <span>${r.isAI ? '🤖' : '👤'}</span>
             <div>
               <div class="font-extrabold text-sm text-white">${r.name} ${r.isWinner ? '👑' : ''}</div>
@@ -2627,30 +3060,29 @@
         scoreTable.appendChild(row);
       });
 
-      const amHost = state.hostSessionId === sessionId;
-      document.getElementById('btnPlayAgain').classList.toggle('hidden', !amHost);
+      const isHost = state.hostSessionId === sessionId;
+      const playAgainBtn = document.getElementById('btnPlayAgain');
+      playAgainBtn.classList.toggle('hidden', !isHost);
       gameOverModal.classList.remove('hidden');
       playSuccessChord();
     }
 
-    function applyRoomState(payload) {
-      const nextBoard = payload.board || Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
-      const movedRemoteIds = new Set();
-      const nextPositions = new Map();
-      for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c < GRID_COLS; c++) {
-          const t = nextBoard[r]?.[c];
-          if (t) {
-            const posKey = `${r},${c}`;
-            nextPositions.set(t.id, posKey);
-            if (prevBoardTilePositions.size > 0 && prevBoardTilePositions.get(t.id) !== posKey) {
-              movedRemoteIds.add(t.id);
-            }
-          }
-        }
+    // ==================== SERVER STATE SYNC ====================
+    function flushPendingServerState() {
+      if (pendingServerState && !interact.active) {
+        const next = pendingServerState;
+        pendingServerState = null;
+        applyServerRoomState(next);
       }
-      prevBoardTilePositions = nextPositions;
+    }
 
+    function applyServerRoomState(payload) {
+      if (interact.active) {
+        pendingServerState = payload;
+        return;
+      }
+
+      const prevPhase = state.phase;
       state.code = payload.code;
       state.phase = payload.phase;
       state.maxPlayers = payload.maxPlayers;
@@ -2662,111 +3094,117 @@
       state.timeLeft = payload.timeLeft;
       state.finalRoundTurnsLeft = payload.finalRoundTurnsLeft ?? null;
       state.finalRoundTriggerName = payload.finalRoundTriggerName || null;
-      state.board = nextBoard;
+      state.board = payload.board || Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
       state.playedFromRackIds = new Set(payload.playedFromRackIds || []);
       state.recentAITileIds = new Set(payload.recentAITileIds || []);
       state.hasBoardChanged = Boolean(payload.hasBoardChanged);
       state.evalState = payload.evalState || null;
-      state.myRack = Array.isArray(payload.myRack) ? payload.myRack : Array(20).fill(null);
+      state.gameOverData = payload.gameOverData || null;
+
+      // 내 받침대 타일 구성이 동일하면 사용자의 로컬 정렬 순서를 유지해 패가 바뀌는 현상 방지
+      const incomingRack = Array.isArray(payload.myRack) ? payload.myRack : Array(20).fill(null);
+      const localIds = state.myRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
+      const serverIds = incomingRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
+      const sameTileSet = localIds.length === serverIds.length && localIds.every((id, i) => id === serverIds[i]);
+      if (!sameTileSet || prevPhase !== 'playing') {
+        state.myRack = incomingRack;
+        if (lifted.active) {
+          const validIds = new Set(serverIds);
+          const nextLifted = lifted.tiles.filter((t) => validIds.has(t.id));
+          if (nextLifted.length === 0) {
+            lifted.active = false;
+            lifted.tiles = [];
+            lifted.originType = null;
+          } else {
+            lifted.tiles = nextLifted;
+          }
+        }
+      }
 
       if (state.phase === 'waiting') {
-        lobbyModal.classList.remove('hidden');
-        lobbyEntryView.classList.add('hidden');
-        lobbyWaitingView.classList.remove('hidden');
+        lobbyModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
+        waitingModal.classList.remove('hidden');
         renderWaitingRoom();
       } else if (state.phase === 'playing') {
         lobbyModal.classList.add('hidden');
+        waitingModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
-        computeBoardDimensions(interact.isDragging);
-        renderPlayersSidebar();
-        renderPoolAndStatus();
-        renderBoard(movedRemoteIds);
-        renderRack();
-        updateControls();
-        if (movedRemoteIds.size > 0 && !isMyTurn()) {
-          playClack(true);
-        }
+        renderAll();
       } else if (state.phase === 'gameover') {
         lobbyModal.classList.add('hidden');
+        waitingModal.classList.add('hidden');
         renderAll();
-        if (payload.gameOverData) renderGameOver(payload.gameOverData);
+        renderGameOver(state.gameOverData);
       }
     }
 
-    socket.on('room:state', (payload) => {
-      if (interact.active || interact.isDragging) {
-        pendingServerState = payload;
-        return;
-      }
-      applyRoomState(payload);
-    });
+    if (socket) {
+      socket.on('room:state', (payload) => applyServerRoomState(payload));
+      socket.on('room:toast', ({ msg, tone }) => {
+        if (msg) showToast(msg, tone || 'info');
+      });
+      socket.on('game:timer', ({ timeLeft, currentPlayerIndex }) => {
+        state.timeLeft = timeLeft;
+        state.currentPlayerIndex = currentPlayerIndex;
+        updateTimerDisplay();
+        if (isMyTurn()) {
+          if (timeLeft <= 5 && timeLeft > 0) playTick(true);
+          else if (timeLeft <= 10 && timeLeft > 5) playTick(false);
+        }
+      });
+      socket.on('game:yourTurn', () => {
+        showMyTurnBanner();
+      });
+      socket.on('game:remoteDrag', (payload) => {
+        if (!isMyTurn()) renderRemoteDragGhost(payload);
+      });
+    } else {
+      showLobbyError('서버(Socket.IO)에 연결할 수 없습니다. Node.js 서버에서 접속해 주세요.');
+    }
 
-    socket.on('game:remoteDrag', (payload = {}) => {
-      if (!payload.active || isMyTurn()) {
-        remoteDragState = { active: false, playerName: '', row: 0, col: 0, tiles: [] };
-      } else {
-        remoteDragState = {
-          active: true,
-          playerName: payload.playerName || '상대',
-          row: payload.row || 0,
-          col: payload.col || 0,
-          tiles: Array.isArray(payload.tiles) ? payload.tiles : [],
-        };
-      }
-      updateRemoteDragOverlay();
-    });
-
-    socket.on('game:timer', ({ timeLeft, currentPlayerIndex }) => {
-      state.timeLeft = timeLeft;
-      state.currentPlayerIndex = currentPlayerIndex;
-      updateTimerDisplay();
-      if (isMyTurn()) {
-        if (timeLeft <= 5 && timeLeft > 0) playTick(true);
-        else if (timeLeft <= 10 && timeLeft > 5) playTick(false);
-      }
-    });
-
-    socket.on('game:yourTurn', () => {
-      showMyTurnBanner();
-    });
-
-    socket.on('room:toast', ({ msg, tone }) => {
-      if (msg) showToast(msg, tone || 'info');
-    });
-
-    // ==================== UI EVENT WIRING ====================
+    // ==================== EVENT WIRING ====================
     document.querySelectorAll('.count-opt').forEach((btn) => {
       btn.addEventListener('click', () => {
         selectedMaxPlayers = parseInt(btn.dataset.count, 10);
         document.querySelectorAll('.count-opt').forEach((b) => {
           const active = parseInt(b.dataset.count, 10) === selectedMaxPlayers;
           b.className = active
-            ? 'count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-amber-400 border-amber-200 text-slate-950 shadow-lg'
-            : 'count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900';
+            ? 'count-opt py-2 rounded-lg font-extrabold text-xs border transition bg-amber-400 border-amber-200 text-slate-950 shadow-lg'
+            : 'count-opt py-2 rounded-lg font-extrabold text-xs border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900';
         });
       });
     });
 
+    function getCleanPlayerName() {
+      const name = inputPlayerName.value.trim().slice(0, 14) || '플레이어';
+      localStorage.setItem(STORAGE_NAME_KEY, name);
+      inputPlayerName.value = name;
+      return name;
+    }
+
     document.getElementById('btnCreateRoom').addEventListener('click', () => {
+      if (!socket) return;
       ensureAudio();
-      const name = saveNickname();
+      showLobbyError('');
+      const name = getCleanPlayerName();
       socket.emit('room:create', { name, maxPlayers: selectedMaxPlayers, sessionId }, (res) => {
-        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
+        if (res && res.error) showLobbyError(res.error);
       });
     });
 
     document.getElementById('btnJoinRoom').addEventListener('click', () => {
+      if (!socket) return;
       ensureAudio();
-      const name = saveNickname();
-      const code = (inputRoomCode.value || '').replace(/\D/g, '').slice(0, 4);
+      showLobbyError('');
+      const name = getCleanPlayerName();
+      const code = inputRoomCode.value.replace(/\D/g, '').slice(0, 4);
       if (code.length !== 4) {
-        playErrorBuzz();
-        showToast('숫자 4자리 방 코드를 입력해 주세요.', 'error');
+        showLobbyError('4자리 숫자 방 코드를 입력해 주세요.');
         return;
       }
       socket.emit('room:join', { code, name, sessionId }, (res) => {
-        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
+        if (res && res.error) showLobbyError(res.error);
       });
     });
 
@@ -2774,50 +3212,49 @@
       inputRoomCode.value = inputRoomCode.value.replace(/\D/g, '').slice(0, 4);
     });
 
-    document.getElementById('btnCopyRoomCode').addEventListener('click', () => {
+    document.getElementById('btnCopyCode').addEventListener('click', () => {
       if (!state.code) return;
-      const ta = document.createElement('textarea');
-      ta.value = state.code;
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); } catch (_e) {}
-      document.body.removeChild(ta);
-      showToast(`방 코드 ${state.code} 복사 완료!`, 'success');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(state.code).then(() => showToast(`방 코드 ${state.code} 복사됨!`, 'success')).catch(() => {});
+      }
     });
 
-    document.getElementById('btnStartMultiplayer').addEventListener('click', () => {
+    document.getElementById('btnStartRoom').addEventListener('click', () => {
+      if (!socket) return;
       ensureAudio();
       socket.emit('room:start', { fillWithAI: false }, (res) => {
-        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
+        if (res && res.error) showToast(res.error, 'error');
       });
     });
 
     document.getElementById('btnStartWithAI').addEventListener('click', () => {
+      if (!socket) return;
       ensureAudio();
       socket.emit('room:start', { fillWithAI: true }, (res) => {
-        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
+        if (res && res.error) showToast(res.error, 'error');
       });
     });
 
-    function leaveRoomToLobby() {
-      socket.emit('room:leave');
+    function leaveToLobby() {
+      if (socket) socket.emit('room:leave');
+      forceResetInteraction();
+      clearLifted();
       state.code = null;
       state.phase = 'lobby';
-      clearLifted();
+      waitingModal.classList.add('hidden');
       gameOverModal.classList.add('hidden');
       lobbyModal.classList.remove('hidden');
-      lobbyEntryView.classList.remove('hidden');
-      lobbyWaitingView.classList.add('hidden');
     }
 
-    document.getElementById('btnLeaveWaiting').addEventListener('click', leaveRoomToLobby);
-    document.getElementById('btnLobby').addEventListener('click', leaveRoomToLobby);
-    document.getElementById('btnBackToLobby').addEventListener('click', leaveRoomToLobby);
+    document.getElementById('btnLeaveWaiting').addEventListener('click', leaveToLobby);
+    document.getElementById('btnLobby').addEventListener('click', leaveToLobby);
+    document.getElementById('btnBackToLobby').addEventListener('click', leaveToLobby);
 
     document.getElementById('btnPlayAgain').addEventListener('click', () => {
+      if (!socket) return;
       ensureAudio();
       socket.emit('game:playAgain', {}, (res) => {
-        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
+        if (res && res.error) showToast(res.error, 'error');
       });
     });
 
@@ -2834,7 +3271,7 @@
     btnCancelLifted.addEventListener('click', clearLifted);
 
     btnEndTurn.addEventListener('click', () => {
-      if (!isMyTurn()) return;
+      if (!socket || !isMyTurn()) return;
       ensureAudio();
       socket.emit('game:endTurn', {}, (res) => {
         if (res && res.error) {
@@ -2842,7 +3279,7 @@
           showToast(res.error, 'error');
         } else if (res && res.action === 'confirm') {
           playSuccessChord();
-        } else if (res && res.action === 'draw') {
+        } else {
           playClack(false);
         }
       });
@@ -2868,8 +3305,7 @@
     });
 
     window.addEventListener('resize', () => {
-      // 모바일 드래그 중 주소창 높이 변화로 resize가 발생해 드래그 중인 타일이 끊기는 현상 방지
-      if (interact.active || interact.isDragging) return;
+      if (interact.active) return;
       computeBoardDimensions(false);
       if (state.phase === 'playing' || state.phase === 'gameover') {
         renderBoard();
