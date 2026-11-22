@@ -1,7 +1,7 @@
 {
   "name": "rummikub-online-multiplayer",
-  "version": "1.0.0",
-  "description": "2~4인 실시간 온라인 루미큐브 웹 게임 (Node.js + Express + Socket.IO)",
+  "version": "2.0.0",
+  "description": "The Original Rummikub Classic Online Multiplayer (Node.js + Socket.IO)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
