@@ -409,6 +409,38 @@
 
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 999px; }
+
+    /* "축 승리!" Celebration Effects */
+    @keyframes victoryPop {
+      0% { transform: scale(0.35) rotate(-8deg); opacity: 0; }
+      60% { transform: scale(1.12) rotate(2deg); opacity: 1; }
+      82% { transform: scale(0.96) rotate(-1deg); }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+
+    @keyframes victoryFloat {
+      0%, 100% { transform: translateY(0px) scale(1); }
+      50% { transform: translateY(-5px) scale(1.03); }
+    }
+
+    @keyframes victoryShimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+
+    .victory-badge-anim {
+      animation: victoryPop 0.65s cubic-bezier(0.22, 1.3, 0.36, 1) forwards, victoryFloat 2.2s ease-in-out 0.65s infinite;
+    }
+
+    .victory-gold-text {
+      background: linear-gradient(90deg, #fde047 0%, #fffbeb 25%, #f59e0b 50%, #fffbeb 75%, #fde047 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: victoryShimmer 2.4s linear infinite;
+      filter: drop-shadow(0 3px 10px rgba(251, 191, 36, 0.75));
+    }
   </style>
 </head>
 <body class="rummikub-table h-screen w-screen overflow-hidden flex flex-col">
@@ -656,9 +688,20 @@
 
   <!-- GAME OVER MODAL -->
   <div id="gameOverModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="w-full max-w-md rounded-2xl bg-[#0b2759] border border-amber-400/60 shadow-2xl overflow-hidden text-center">
-      <div class="px-6 py-5 bg-gradient-to-b from-amber-500/25 to-transparent">
-        <div class="text-4xl mb-1">🏆</div>
+    <!-- Full-screen Fireworks & Confetti Canvas -->
+    <canvas id="victoryFxCanvas" class="fixed inset-0 w-full h-full pointer-events-none z-0"></canvas>
+
+    <div class="relative z-10 w-full max-w-md rounded-2xl bg-[#0b2759] border-2 border-amber-400/70 shadow-[0_0_40px_rgba(251,191,36,0.3)] overflow-hidden text-center">
+      <div class="px-6 py-5 bg-gradient-to-b from-amber-500/30 to-transparent">
+        <!-- Personal Victory "축 승리!" Banner -->
+        <div id="victoryBannerWrap" class="hidden mb-2 flex flex-col items-center">
+          <div class="victory-badge-anim inline-flex items-center gap-2 px-5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/30 via-yellow-400/35 to-amber-500/30 border-2 border-amber-300 shadow-[0_0_24px_rgba(251,191,36,0.75)]">
+            <span class="text-xl sm:text-2xl">🎊</span>
+            <span class="victory-gold-text text-2xl sm:text-3xl font-black tracking-wider">축 승리!</span>
+            <span class="text-xl sm:text-2xl">🎉</span>
+          </div>
+        </div>
+        <div id="winnerTrophyIcon" class="text-4xl mb-1">🏆</div>
         <h2 id="winnerTitle" class="text-2xl font-black text-amber-300">루미큐브! 승리!</h2>
         <p id="winnerSubtitle" class="text-xs text-blue-100/80 mt-1">모든 타일을 가장 먼저 내려놓았습니다.</p>
       </div>
@@ -831,6 +874,156 @@
       });
     }
 
+    function playVictoryFanfare() {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const melody = [
+        { f: 523.25, t: 0.00, d: 0.14 },
+        { f: 659.25, t: 0.11, d: 0.14 },
+        { f: 783.99, t: 0.22, d: 0.16 },
+        { f: 1046.5, t: 0.36, d: 0.48 },
+        { f: 783.99, t: 0.56, d: 0.14 },
+        { f: 1046.5, t: 0.70, d: 0.65 },
+      ];
+      melody.forEach(({ f, t, d }) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, now + t);
+        g.gain.setValueAtTime(0.18, now + t);
+        g.gain.exponentialRampToValueAtTime(0.001, now + t + d);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now + t);
+        osc.stop(now + t + d + 0.02);
+      });
+    }
+
+    // ==================== VICTORY CONFETTI & FIREWORKS CANVAS ====================
+    const victoryFxCanvas = document.getElementById('victoryFxCanvas');
+    const victoryBannerWrap = document.getElementById('victoryBannerWrap');
+    let victoryFxRaf = null;
+    let victoryParticles = [];
+
+    function stopVictoryEffects() {
+      if (victoryFxRaf) {
+        cancelAnimationFrame(victoryFxRaf);
+        victoryFxRaf = null;
+      }
+      victoryParticles = [];
+      if (victoryFxCanvas) {
+        const ctx = victoryFxCanvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, victoryFxCanvas.width, victoryFxCanvas.height);
+      }
+    }
+
+    function startVictoryEffects(isMyWin) {
+      stopVictoryEffects();
+      if (!victoryFxCanvas) return;
+      const ctx = victoryFxCanvas.getContext('2d');
+      if (!ctx) return;
+
+      const resizeCanvas = () => {
+        victoryFxCanvas.width = window.innerWidth;
+        victoryFxCanvas.height = window.innerHeight;
+      };
+      resizeCanvas();
+
+      const palette = ['#fde047', '#fb923c', '#38bdf8', '#4ade80', '#f472b6', '#ffffff', '#facc15'];
+
+      function spawnBurst(cx, cy, count, speedScale = 1) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = (2.5 + Math.random() * 6.5) * speedScale;
+          victoryParticles.push({
+            x: cx,
+            y: cy,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - (1.8 * speedScale),
+            size: 5 + Math.random() * 6,
+            color: palette[Math.floor(Math.random() * palette.length)],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 0.25,
+            life: 1,
+            decay: 0.008 + Math.random() * 0.008,
+            shape: Math.random() < 0.35 ? 'circle' : 'rect',
+          });
+        }
+      }
+
+      const w = victoryFxCanvas.width;
+      const h = victoryFxCanvas.height;
+      spawnBurst(w * 0.5, h * 0.36, isMyWin ? 90 : 45, 1.1);
+      if (isMyWin) {
+        setTimeout(() => { if (state.phase === 'gameover') spawnBurst(w * 0.25, h * 0.3, 60, 1.0); }, 280);
+        setTimeout(() => { if (state.phase === 'gameover') spawnBurst(w * 0.75, h * 0.3, 60, 1.0); }, 520);
+        setTimeout(() => { if (state.phase === 'gameover') spawnBurst(w * 0.5, h * 0.24, 70, 1.15); }, 900);
+      }
+
+      function animate() {
+        if (state.phase !== 'gameover') {
+          stopVictoryEffects();
+          return;
+        }
+        ctx.clearRect(0, 0, victoryFxCanvas.width, victoryFxCanvas.height);
+
+        // 내 승리 시 상단에서 황금 꽃가루가 은은하게 계속 떨어짐
+        if (isMyWin && victoryParticles.length < 140 && Math.random() < 0.35) {
+          victoryParticles.push({
+            x: Math.random() * victoryFxCanvas.width,
+            y: -10,
+            vx: (Math.random() - 0.5) * 1.4,
+            vy: 1.8 + Math.random() * 2.4,
+            size: 5 + Math.random() * 5,
+            color: palette[Math.floor(Math.random() * palette.length)],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 0.18,
+            life: 1,
+            decay: 0.0045,
+            shape: 'rect',
+          });
+        }
+
+        for (let i = victoryParticles.length - 1; i >= 0; i--) {
+          const p = victoryParticles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.11;
+          p.vx *= 0.99;
+          p.rot += p.vRot;
+          p.life -= p.decay;
+
+          if (p.life <= 0 || p.y > victoryFxCanvas.height + 24) {
+            victoryParticles.splice(i, 1);
+            continue;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.fillStyle = p.color;
+          if (p.shape === 'circle') {
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size * 0.45, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillRect(-p.size / 2, -p.size * 0.3, p.size, p.size * 0.6);
+          }
+          ctx.restore();
+        }
+
+        if (victoryParticles.length > 0 || isMyWin) {
+          victoryFxRaf = requestAnimationFrame(animate);
+        } else {
+          victoryFxRaf = null;
+        }
+      }
+
+      victoryFxRaf = requestAnimationFrame(animate);
+    }
+
     function playErrorBuzz() {
       const ctx = ensureAudio();
       if (!ctx) return;
@@ -852,6 +1045,8 @@
     let selectedMaxPlayers = 4;
     let pendingServerState = null;
     let lastPreviewEmitAt = 0;
+    let lastTimerTickAt = Date.now();
+    let resyncInFlight = false;
 
     const state = {
       code: null,
@@ -3072,7 +3267,19 @@
 
     function renderGameOver(data) {
       if (!data) return;
-      document.getElementById('winnerTitle').textContent = `🏆 ${data.winnerName} 승리!`;
+      const isMyWin = Boolean(data.winnerSessionId && data.winnerSessionId === sessionId);
+      const trophyEl = document.getElementById('winnerTrophyIcon');
+
+      if (isMyWin) {
+        victoryBannerWrap.classList.remove('hidden');
+        if (trophyEl) trophyEl.textContent = '👑';
+        document.getElementById('winnerTitle').textContent = `🏆 ${data.winnerName}님 우승!`;
+      } else {
+        victoryBannerWrap.classList.add('hidden');
+        if (trophyEl) trophyEl.textContent = '🏆';
+        document.getElementById('winnerTitle').textContent = `🏆 ${data.winnerName} 승리!`;
+      }
+
       document.getElementById('winnerSubtitle').textContent = data.subtitle || '게임이 종료되었습니다.';
       const scoreTable = document.getElementById('scoreTable');
       scoreTable.innerHTML = '';
@@ -3107,10 +3314,21 @@
       const playAgainBtn = document.getElementById('btnPlayAgain');
       playAgainBtn.classList.toggle('hidden', !isHost);
       gameOverModal.classList.remove('hidden');
-      playSuccessChord();
+      if (isMyWin) playVictoryFanfare();
+      else playSuccessChord();
+      startVictoryEffects(isMyWin);
     }
 
-    // ==================== SERVER STATE SYNC ====================
+    // ==================== SERVER STATE SYNC & AUTO-RESYNC WATCHDOG ====================
+    function requestRoomResync() {
+      if (!socket || !socket.connected || !state.code || state.phase === 'lobby' || resyncInFlight) return;
+      resyncInFlight = true;
+      lastTimerTickAt = Date.now();
+      socket.emit('room:resync', { code: state.code, sessionId }, () => {
+        resyncInFlight = false;
+      });
+    }
+
     function flushPendingServerState() {
       if (pendingServerState && !interact.active) {
         const next = pendingServerState;
@@ -3165,11 +3383,14 @@
       }
 
       if (state.phase === 'waiting') {
+        stopVictoryEffects();
         lobbyModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
         waitingModal.classList.remove('hidden');
         renderWaitingRoom();
       } else if (state.phase === 'playing') {
+        stopVictoryEffects();
+        lastTimerTickAt = Date.now();
         lobbyModal.classList.add('hidden');
         waitingModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
@@ -3183,11 +3404,20 @@
     }
 
     if (socket) {
-      socket.on('room:state', (payload) => applyServerRoomState(payload));
+      socket.on('connect', () => {
+        if (state.code && state.phase !== 'lobby') {
+          requestRoomResync();
+        }
+      });
+      socket.on('room:state', (payload) => {
+        lastTimerTickAt = Date.now();
+        applyServerRoomState(payload);
+      });
       socket.on('room:toast', ({ msg, tone }) => {
         if (msg) showToast(msg, tone || 'info');
       });
       socket.on('game:timer', ({ timeLeft, currentPlayerIndex }) => {
+        lastTimerTickAt = Date.now();
         state.timeLeft = timeLeft;
         state.currentPlayerIndex = currentPlayerIndex;
         updateTimerDisplay();
@@ -3205,6 +3435,19 @@
     } else {
       showLobbyError('서버(Socket.IO)에 연결할 수 없습니다. Node.js 서버에서 접속해 주세요.');
     }
+
+    // 3초 이상 서버 타이머 신호가 안 오면 자동 재동기화 (멈춤 현상 방지)
+    setInterval(() => {
+      if (state.phase === 'playing' && state.code && Date.now() - lastTimerTickAt > 3500) {
+        requestRoomResync();
+      }
+    }, 2000);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state.code && state.phase !== 'lobby') {
+        requestRoomResync();
+      }
+    });
 
     // ==================== EVENT WIRING ====================
     document.querySelectorAll('.count-opt').forEach((btn) => {
@@ -3280,6 +3523,7 @@
 
     function leaveToLobby() {
       if (socket) socket.emit('room:leave');
+      stopVictoryEffects();
       forceResetInteraction();
       clearLifted();
       state.code = null;
