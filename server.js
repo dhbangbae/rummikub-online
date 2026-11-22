@@ -26,7 +26,7 @@ const GRID_ROWS = 8;
 const TURN_SECONDS = 40;
 const AI_NAMES = ['Congo', 'Daphne', 'Vera'];
 
-const rooms = new Map();
+const rooms = new Map(); // code -> room
 
 // ==================== DECK & BOARD HELPERS ====================
 function createDeck() {
@@ -79,6 +79,17 @@ function addTileToRack(player, tile) {
   const emptyIdx = player.rack.indexOf(null);
   if (emptyIdx !== -1) player.rack[emptyIdx] = tile;
   else player.rack.push(tile);
+}
+
+function drawTileFromPool(room, player) {
+  if (room.pool.length === 0) return null;
+  const tile = room.pool.pop();
+  addTileToRack(player, tile);
+  if (room.pool.length === 0 && room.finalRoundTurnsLeft === null && !room.finalRoundJustTriggered) {
+    room.finalRoundJustTriggered = true;
+    room.finalRoundTriggerName = player.name;
+  }
+  return tile;
 }
 
 function generateRoomCode() {
@@ -278,6 +289,8 @@ function buildRoomPayloadFor(room, targetSessionId) {
     currentPlayerIndex: room.currentPlayerIndex,
     poolCount: room.pool.length,
     timeLeft: room.timeLeft,
+    finalRoundTurnsLeft: room.finalRoundTurnsLeft,
+    finalRoundTriggerName: room.finalRoundTriggerName,
     board: room.board,
     myPlayerIndex: meIdx,
     myRack: me ? me.rack : [],
@@ -360,6 +373,9 @@ function startGameInRoom(room, fillWithAI = false) {
   room.board = createEmptyBoard();
   room.currentPlayerIndex = 0;
   room.consecutivePasses = 0;
+  room.finalRoundJustTriggered = false;
+  room.finalRoundTurnsLeft = null;
+  room.finalRoundTriggerName = null;
   room.recentAITileIds = new Set();
   room.gameOverData = null;
 
@@ -456,8 +472,7 @@ function handleTurnTimeout(room) {
   const penalty = hasInvalidGroup ? 3 : 1;
   let drawn = 0;
   for (let i = 0; i < penalty && room.pool.length > 0; i++) {
-    addTileToRack(player, room.pool.pop());
-    drawn++;
+    if (drawTileFromPool(room, player)) drawn++;
   }
 
   const msg = hasInvalidGroup
@@ -490,18 +505,19 @@ function confirmTurnSuccess(room, toast = null) {
 function advanceToNextPlayer(room, toast = null) {
   clearRoomTimers(room);
 
-  if (room.pool.length === 0 && room.consecutivePasses >= room.players.length) {
-    let bestPlayer = room.players[0];
-    let bestScore = Infinity;
-    for (const p of room.players) {
-      const sum = calcRackPenalty(p);
-      if (sum < bestScore) {
-        bestScore = sum;
-        bestPlayer = p;
-      }
+  if (room.finalRoundJustTriggered) {
+    room.finalRoundJustTriggered = false;
+    room.finalRoundTurnsLeft = room.players.length;
+    toast = {
+      msg: `더미 소진! 마지막 패를 뽑은 ${room.finalRoundTriggerName}님 차례까지 한 바퀴 더 돌고 점수로 승부합니다!`,
+      tone: 'info',
+    };
+  } else if (room.finalRoundTurnsLeft !== null) {
+    room.finalRoundTurnsLeft--;
+    if (room.finalRoundTurnsLeft <= 0) {
+      finishGameByScore(room);
+      return;
     }
-    triggerGameOver(room, bestPlayer, '더미 소진! 남은 패 점수가 가장 낮은 플레이어가 승리했습니다.');
-    return;
   }
 
   room.currentPlayerIndex = (room.currentPlayerIndex + 1) % room.players.length;
@@ -511,28 +527,86 @@ function advanceToNextPlayer(room, toast = null) {
   startTurn(room);
 }
 
-function triggerGameOver(room, winner, subtitle) {
-  clearRoomTimers(room);
-  room.phase = 'gameover';
+function computeFinalScores(room, forcedWinnerSessionId = null) {
+  const entries = room.players.map((p) => ({
+    player: p,
+    rawSum: calcRackPenalty(p),
+    leftCount: getRackTiles(p).length,
+  }));
 
-  let totalLoserPenalty = 0;
-  const rows = room.players.map((p) => {
-    const penalty = p.sessionId === winner.sessionId ? 0 : calcRackPenalty(p);
-    totalLoserPenalty += penalty;
+  let winnerEntry;
+  if (forcedWinnerSessionId) {
+    winnerEntry = entries.find((e) => e.player.sessionId === forcedWinnerSessionId) || entries[0];
+  } else {
+    const sorted = [...entries].sort((a, b) => (a.rawSum !== b.rawSum ? a.rawSum - b.rawSum : a.leftCount - b.leftCount));
+    winnerEntry = sorted[0];
+  }
+
+  // 1등의 패 합계를 0점으로 만드는 보정치(+minSum)를 나머지 플레이어 점수(-rawSum)에 각각 더함
+  const minSum = winnerEntry.rawSum;
+  let totalWinnerGain = 0;
+
+  const rows = entries.map((e) => {
+    const isWinner = e.player.sessionId === winnerEntry.player.sessionId;
+    if (isWinner) {
+      return {
+        name: e.player.name,
+        isAI: e.player.isAI,
+        isWinner: true,
+        rawSum: e.rawSum,
+        penalty: 0,
+        adjustedScore: 0,
+        leftCount: e.leftCount,
+      };
+    }
+    const adjustedLoss = Math.max(0, e.rawSum - minSum);
+    totalWinnerGain += adjustedLoss;
     return {
-      name: p.name,
-      isAI: p.isAI,
-      isWinner: p.sessionId === winner.sessionId,
-      penalty,
-      leftCount: getRackTiles(p).length,
+      name: e.player.name,
+      isAI: e.player.isAI,
+      isWinner: false,
+      rawSum: e.rawSum,
+      penalty: adjustedLoss,
+      adjustedScore: -adjustedLoss,
+      leftCount: e.leftCount,
     };
   });
 
-  room.gameOverData = {
-    winnerName: winner.name,
-    subtitle,
-    totalLoserPenalty,
+  const winnerRow = rows.find((r) => r.isWinner);
+  if (winnerRow) winnerRow.adjustedScore = totalWinnerGain;
+
+  rows.sort((a, b) => (a.isWinner !== b.isWinner ? (a.isWinner ? -1 : 1) : b.adjustedScore - a.adjustedScore));
+
+  return {
+    winner: winnerEntry.player,
+    minSum,
+    totalLoserPenalty: totalWinnerGain,
     rows,
+  };
+}
+
+function finishGameByScore(room) {
+  const result = computeFinalScores(room, null);
+  const subtitle = result.minSum > 0
+    ? `파이널 라운드 종료! 최저 합계 ${result.minSum}점을 0점으로 보정(+${result.minSum})하여 정산했습니다.`
+    : '파이널 라운드 종료! 남은 패 합계가 가장 적은 플레이어가 승리했습니다.';
+  triggerGameOver(room, result.winner, subtitle, result);
+}
+
+function triggerGameOver(room, winner, subtitle, precomputed = null) {
+  clearRoomTimers(room);
+  room.phase = 'gameover';
+  room.finalRoundJustTriggered = false;
+  room.finalRoundTurnsLeft = null;
+
+  const result = precomputed || computeFinalScores(room, winner.sessionId);
+
+  room.gameOverData = {
+    winnerName: result.winner.name,
+    subtitle,
+    minSum: result.minSum,
+    totalLoserPenalty: result.totalLoserPenalty,
+    rows: result.rows,
   };
 
   broadcastRoom(room);
@@ -725,7 +799,7 @@ function executeAITurn(room) {
   }
 
   if (room.pool.length > 0) {
-    addTileToRack(ai, room.pool.pop());
+    drawTileFromPool(room, ai);
   }
   room.recentAITileIds = new Set();
   room.consecutivePasses++;
@@ -845,6 +919,9 @@ io.on('connection', (socket) => {
       playedFromRackIds: new Set(),
       recentAITileIds: new Set(),
       consecutivePasses: 0,
+      finalRoundJustTriggered: false,
+      finalRoundTurnsLeft: null,
+      finalRoundTriggerName: null,
       timeLeft: TURN_SECONDS,
       timerInterval: null,
       aiTimeout: null,
@@ -972,7 +1049,7 @@ io.on('connection', (socket) => {
     const evalRes = evaluateTurnState(room);
     if (evalRes.playedCount === 0 && !hasBoardChangedFromSnapshot(room)) {
       if (room.pool.length > 0) {
-        addTileToRack(curr, room.pool.pop());
+        drawTileFromPool(room, curr);
         room.consecutivePasses++;
         cb({ ok: true, action: 'draw' });
         advanceToNextPlayer(room, { msg: `${curr.name}님이 타일 1장을 뽑았습니다.`, tone: 'info' });
