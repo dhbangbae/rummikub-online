@@ -438,6 +438,24 @@ function handleTurnTimeout(room) {
     return;
   }
 
+  // 첫 등록 전(!player.hasMelded): 메이드가 안 된 패나 총합 30점 미만 패를 내려놓은 경우 즉시 자동 회수하고 1장 받기
+  if (!player.hasMelded) {
+    const hadChanges = hasBoardChangedFromSnapshot(room) || evalRes.playedCount > 0;
+    if (hadChanges && room.turnSnapshot) {
+      room.board = cloneBoard(room.turnSnapshot.board);
+      player.rack = cloneRack(room.turnSnapshot.rack);
+    }
+
+    const drawn = room.pool.length > 0 && drawTileFromPool(room, player) ? 1 : 0;
+    const msg = hadChanges
+      ? `${player.name} 시간 초과! 첫 등록 미완성/30점 미만 패를 자동 회수하고 ${drawn}장을 받았습니다.`
+      : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`;
+
+    room.consecutivePasses++;
+    advanceToNextPlayer(room, { msg, tone: 'error' });
+    return;
+  }
+
   const groups = getBoardGroups(room.board);
   const hasInvalidGroup = groups.some((g) => !g.valid);
   let keptMadeOnBoard = false;
