@@ -210,7 +210,13 @@ function evaluateTurnState(room) {
   const allValid = groups.every((g) => g.valid);
 
   if (playedCount === 0) {
-    return { canConfirm: false, playedCount: 0, allValid, meldPoints: 0, reason: '내 패를 내려놓거나 우측 + 로 뽑으세요.' };
+    return {
+      canConfirm: false,
+      playedCount: 0,
+      allValid,
+      meldPoints: 0,
+      reason: allValid ? '내 패를 내려놓거나 우측 + 로 뽑으세요.' : '빨간 테두리 세트를 수정하세요.',
+    };
   }
 
   if (!player.hasMelded) {
@@ -1140,7 +1146,11 @@ io.on('connection', (socket) => {
     }
 
     const evalRes = evaluateTurnState(room);
-    if (evalRes.playedCount === 0 && !hasBoardChangedFromSnapshot(room)) {
+    if (evalRes.playedCount === 0) {
+      if (!evalRes.allValid) {
+        cb({ error: '바닥에 미완성 세트가 있습니다. 유효하게 맞춘 뒤 뽑아주세요.' });
+        return;
+      }
       if (room.pool.length > 0) {
         drawTileFromPool(room, curr);
         room.consecutivePasses++;
