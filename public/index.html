@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>The Original Rummikub — Online Multiplayer</title>
+  <title>The Original Rummikub — Classic Online Multiplayer</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="/socket.io/socket.io.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -27,7 +27,7 @@
       -webkit-touch-callout: none;
     }
 
-    input {
+    input, textarea {
       -webkit-user-select: text;
       user-select: text;
     }
@@ -41,8 +41,11 @@
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
       background: #071b42;
       color: #f8fafc;
+      overscroll-behavior: none;
+      touch-action: none;
     }
 
+    /* Classic Royal Blue Velvet Felt Table */
     .rummikub-table {
       background: radial-gradient(ellipse at 52% 44%, var(--felt-center) 0%, var(--felt-mid) 56%, var(--felt-edge) 100%);
       position: relative;
@@ -60,6 +63,7 @@
       pointer-events: none;
     }
 
+    /* Center Felt Embossed Watermark */
     .felt-watermark {
       position: absolute;
       inset: 0;
@@ -94,6 +98,7 @@
       line-height: 1;
     }
 
+    /* Authentic Original Rummikub Ivory Tile */
     .rk-tile {
       position: relative;
       background: linear-gradient(180deg, var(--tile-top) 0%, #f3eee2 68%, var(--tile-bot) 100%);
@@ -110,8 +115,9 @@
       justify-content: center;
       cursor: grab;
       touch-action: none;
+      -webkit-user-drag: none;
       overflow: hidden;
-      transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.14s ease;
+      transition: transform 0.12s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.12s ease, opacity 0.1s ease;
     }
 
     .rk-tile:active { cursor: grabbing; }
@@ -186,22 +192,33 @@
 
     .rk-tile.lifted-selected {
       transform: translateY(-6px) scale(1.06);
-      box-shadow: 0 4px 0 #b88424, 0 0 14px rgba(250, 204, 21, 0.85), 0 0 0 2.5px #fde047, 0 10px 18px rgba(0, 0, 0, 0.55);
+      box-shadow:
+        0 4px 0 #b88424,
+        0 0 14px rgba(250, 204, 21, 0.85),
+        0 0 0 2.5px #fde047,
+        0 10px 18px rgba(0, 0, 0, 0.55);
       z-index: 30 !important;
     }
 
     .rk-tile.hold-preview-selected {
       transform: translateY(-4px) scale(1.04);
-      box-shadow: 0 3px 0 #0284c7, 0 0 12px rgba(56, 189, 248, 0.75), 0 0 0 2px #38bdf8;
+      box-shadow:
+        0 3px 0 #0284c7,
+        0 0 12px rgba(56, 189, 248, 0.75),
+        0 0 0 2px #38bdf8;
       z-index: 25 !important;
     }
 
     .rk-tile.hold-preview-full {
       transform: translateY(-5px) scale(1.05);
-      box-shadow: 0 3px 0 #ca8a04, 0 0 14px rgba(250, 204, 21, 0.85), 0 0 0 2px #facc15;
+      box-shadow:
+        0 3px 0 #ca8a04,
+        0 0 14px rgba(250, 204, 21, 0.85),
+        0 0 0 2px #facc15;
       z-index: 26 !important;
     }
 
+    /* Board Group Frames */
     .group-frame {
       position: absolute;
       pointer-events: none;
@@ -215,26 +232,47 @@
       box-shadow: 0 0 12px rgba(239, 68, 68, 0.45);
     }
 
+    /* Magnetic Drop Ghost */
     .magnet-ghost {
       position: absolute;
       pointer-events: none;
       border-radius: 6px;
       z-index: 20;
-      transition: left 0.06s ease-out, top 0.06s ease-out;
+      transition: left 0.05s ease-out, top 0.05s ease-out;
     }
-    .magnet-ghost.snapped-valid { border: 2px solid #4ade80; background: rgba(74, 222, 128, 0.28); box-shadow: 0 0 16px rgba(74, 222, 128, 0.65); }
-    .magnet-ghost.snapped-magnet { border: 2px solid #38bdf8; background: rgba(56, 189, 248, 0.25); box-shadow: 0 0 14px rgba(56, 189, 248, 0.55); }
-    .magnet-ghost.snapped-free { border: 2px dashed rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.1); }
+    .magnet-ghost.snapped-valid {
+      border: 2px solid #4ade80;
+      background: rgba(74, 222, 128, 0.28);
+      box-shadow: 0 0 16px rgba(74, 222, 128, 0.65);
+    }
+    .magnet-ghost.snapped-magnet {
+      border: 2px solid #38bdf8;
+      background: rgba(56, 189, 248, 0.25);
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.55);
+    }
+    .magnet-ghost.snapped-free {
+      border: 2px dashed rgba(255, 255, 255, 0.5);
+      background: rgba(255, 255, 255, 0.1);
+    }
 
+    /* Natural Beech/Oak 2-Tier Wooden Rack */
     .wood-rack {
       position: relative;
       background:
-        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.04) 0px, rgba(255, 255, 255, 0.04) 2px, rgba(95, 56, 20, 0.06) 2px, rgba(95, 56, 20, 0.06) 5px),
+        repeating-linear-gradient(
+          0deg,
+          rgba(255, 255, 255, 0.04) 0px,
+          rgba(255, 255, 255, 0.04) 2px,
+          rgba(95, 56, 20, 0.06) 2px,
+          rgba(95, 56, 20, 0.06) 5px
+        ),
         linear-gradient(180deg, #e5be8d 0%, #cfa06d 38%, #bc8852 72%, #a26f3e 100%);
       border: 1.5px solid #e9cba2;
       border-bottom: 4px solid #7d522a;
       border-radius: 6px 6px 4px 4px;
-      box-shadow: 0 10px 26px rgba(4, 12, 34, 0.72), inset 0 2px 0 rgba(255, 244, 222, 0.55);
+      box-shadow:
+        0 10px 26px rgba(4, 12, 34, 0.72),
+        inset 0 2px 0 rgba(255, 244, 222, 0.55);
     }
 
     .wood-tier {
@@ -266,19 +304,28 @@
       position: relative;
       transition: background 0.12s ease;
     }
-    .rack-slot.drag-over { background: rgba(250, 204, 21, 0.35); outline: 2px dashed #fde047; }
+    .rack-slot.drag-over {
+      background: rgba(250, 204, 21, 0.35);
+      outline: 2px dashed #fde047;
+    }
 
+    /* Right-side Glassy Pill Controls */
     .rk-pill-capsule {
       background: linear-gradient(180deg, rgba(44, 88, 152, 0.88) 0%, rgba(20, 52, 102, 0.94) 100%);
       border: 1.5px solid var(--pill-border);
-      box-shadow: 0 6px 16px rgba(3, 12, 34, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+      box-shadow:
+        0 6px 16px rgba(3, 12, 34, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35);
       backdrop-filter: blur(6px);
     }
 
     .rk-draw-pill {
       background: linear-gradient(180deg, rgba(42, 82, 140, 0.88) 0%, rgba(19, 48, 96, 0.94) 100%);
       border: 2px solid rgba(236, 162, 92, 0.85);
-      box-shadow: 0 0 14px rgba(236, 162, 92, 0.35), 0 8px 18px rgba(3, 12, 34, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+      box-shadow:
+        0 0 14px rgba(236, 162, 92, 0.35),
+        0 8px 18px rgba(3, 12, 34, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35);
     }
     .rk-draw-pill.ready-confirm {
       background: linear-gradient(180deg, #22c55e 0%, #15803d 100%);
@@ -299,31 +346,49 @@
       box-shadow: 0 0 18px rgba(74, 222, 128, 0.7), 0 4px 14px rgba(2, 10, 30, 0.7);
     }
 
-    #holdRingContainer { position: fixed; pointer-events: none; z-index: 9999; transform: translate(-50%, -115%); display: none; }
-    #dragLayer { position: fixed; pointer-events: none; z-index: 9998; display: none; }
+    #holdRingContainer {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -115%);
+      display: none;
+    }
+
+    #dragLayer {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9998;
+      display: none;
+    }
+
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 999px; }
   </style>
 </head>
 <body class="rummikub-table h-screen w-screen overflow-hidden flex flex-col">
 
+  <!-- Center Embossed Felt Watermark -->
   <div class="felt-watermark" aria-hidden="true">
     <div class="felt-watermark-sub">The Original</div>
     <div class="felt-watermark-main">Rummikub</div>
   </div>
 
+  <!-- TOP UTILITY BAR -->
   <div class="relative z-30 flex items-center justify-between px-2 sm:px-3 pt-1.5 pb-0.5 pointer-events-none">
-    <div class="flex items-center gap-1.5 pointer-events-auto">
-      <button id="roomCodeBadgeWrap" type="button" class="hidden items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/65 border border-amber-400/60 text-amber-300 text-[11px] font-black backdrop-blur-sm hover:bg-slate-900/80 transition" title="클릭하여 방 코드 복사">
+    <div class="flex items-center gap-1.5 pointer-events-auto flex-wrap">
+      <div id="roomCodeBadgeWrap" class="hidden items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/60 border border-amber-400/60 text-amber-300 text-[11px] font-black backdrop-blur-sm">
         <span class="opacity-75">방</span>
         <span id="hudRoomCode" class="tracking-widest">----</span>
-      </button>
+      </div>
       <div id="meldStatusBadge" class="px-2.5 py-1 rounded-full bg-slate-950/55 border border-amber-400/50 text-amber-200 text-[11px] font-bold backdrop-blur-sm">
         첫 등록: 0 / 30점
       </div>
+      <div id="finalRoundBadge" class="hidden px-2.5 py-1 rounded-full bg-rose-950/85 border border-rose-400/80 text-rose-100 text-[11px] font-black backdrop-blur-sm animate-pulse">
+        🔥 파이널 라운드
+      </div>
       <div id="turnStatusText" class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/45 border border-blue-400/30 text-blue-100 text-[11px] font-semibold backdrop-blur-sm max-w-xs truncate">
         <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>서버 연결 중...</span>
+        <span>대기 중</span>
       </div>
     </div>
 
@@ -331,27 +396,33 @@
       <button id="btnSound" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-xs font-bold text-blue-100 hover:brightness-110 transition" title="효과음 켜기/끄기">
         <span id="soundIcon">🔊</span>
       </button>
-      <button id="btnHelp" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-blue-100 hover:brightness-110 transition">
+      <button id="btnHelp" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-blue-100 hover:brightness-110 transition" title="규칙 및 조작법">
         규칙
       </button>
-      <button id="btnLeaveRoom" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-200 hover:brightness-110 transition">
-        « 나가기
+      <button id="btnLobby" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-200 hover:brightness-110 transition" title="방 나가기 / 로비">
+        « 로비
       </button>
     </div>
   </div>
 
+  <!-- MAIN TABLE AREA -->
   <div class="relative z-10 flex-1 flex items-stretch min-h-0 w-full px-1 sm:px-2 pb-1.5 gap-1 sm:gap-2">
+
+    <!-- LEFT SIDEBAR: Player Avatars & Active 40s Circular Timer -->
     <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-14 sm:w-[76px] z-20"></aside>
 
+    <!-- CENTER COLUMN: Free-Placement Board + Natural Wooden 2-Tier Rack -->
     <div class="flex-1 min-w-0 flex flex-col items-center justify-between gap-1 min-h-0">
       <main id="boardViewport" class="flex-1 w-full min-h-0 relative flex items-center justify-center overflow-hidden">
         <div id="boardGrid" class="relative rounded-xl"></div>
 
+        <!-- Floating Selected-Tiles Banner -->
         <div id="liftedBanner" class="hidden absolute top-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-amber-400 text-slate-950 font-extrabold text-[11px] sm:text-xs px-3 py-1 rounded-full shadow-lg border border-white">
           <span id="liftedBannerText">3개 선택됨 — 보드로 드래그해 놓으세요</span>
           <button id="btnCancelLifted" type="button" class="px-2 py-0.5 rounded-full bg-slate-950/20 hover:bg-slate-950/35 text-[10px]">취소</button>
         </div>
 
+        <!-- My Turn Alert Overlay -->
         <div id="myTurnAlert" class="pointer-events-none hidden fixed inset-x-0 top-16 z-50 flex justify-center px-4">
           <div class="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black text-base sm:text-xl shadow-[0_0_28px_rgba(251,191,36,0.85)] border-2 border-white animate-bounce flex items-center gap-2">
             <span>🔔</span>
@@ -359,11 +430,13 @@
           </div>
         </div>
 
+        <!-- Toast Notification -->
         <div id="toastBox" class="pointer-events-none fixed top-14 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 opacity-0 translate-y-2">
           <div id="toastInner" class="px-3.5 py-1.5 rounded-xl bg-slate-950/90 border border-blue-400/50 text-white text-xs font-bold shadow-2xl"></div>
         </div>
       </main>
 
+      <!-- Bottom Natural Wooden 2-Tier Rack -->
       <section id="rackWrap" class="w-full flex items-center justify-center shrink-0 pt-1">
         <div id="woodRack" class="wood-rack px-1.5 sm:px-2.5 pt-1 pb-2 max-w-full">
           <div id="rackRow0" class="wood-tier gap-0.5 pb-0.5"></div>
@@ -373,18 +446,25 @@
       </section>
     </div>
 
+    <!-- RIGHT SIDEBAR: Stacked 789 / 777 Pill + Tall Draw/Confirm (+) Pill -->
     <aside class="flex flex-col items-center justify-end gap-2.5 pb-1 shrink-0 w-12 sm:w-[66px] z-20">
       <div class="rk-pill-capsule w-full rounded-[24px] overflow-hidden flex flex-col">
-        <button id="btnSortRun" type="button" class="w-full py-3 sm:py-4 flex items-center justify-center font-black text-sm sm:text-lg text-white hover:bg-white/10 active:scale-95 transition tracking-tight" title="789 연속 정렬">
+        <button id="btnSortRun" type="button"
+          class="w-full py-3 sm:py-4 flex items-center justify-center font-black text-sm sm:text-lg text-white hover:bg-white/10 active:scale-95 transition tracking-tight"
+          title="789 연속 정렬 (같은 색 연속 숫자)">
           789
         </button>
         <div class="h-[1px] bg-blue-300/35 mx-2"></div>
-        <button id="btnSortGroup" type="button" class="w-full py-3 sm:py-4 flex items-center justify-center font-black text-sm sm:text-lg text-white hover:bg-white/10 active:scale-95 transition tracking-tight" title="777 숫자 정렬">
+        <button id="btnSortGroup" type="button"
+          class="w-full py-3 sm:py-4 flex items-center justify-center font-black text-sm sm:text-lg text-white hover:bg-white/10 active:scale-95 transition tracking-tight"
+          title="777 숫자 정렬 (같은 숫자 다른 색)">
           777
         </button>
       </div>
 
-      <button id="btnEndTurn" type="button" class="rk-draw-pill w-full rounded-[28px] py-3 sm:py-4 flex flex-col items-center justify-between gap-2 text-white active:scale-95 transition min-h-[104px] sm:min-h-[132px]" title="타일 뽑기 또는 턴 완료">
+      <button id="btnEndTurn" type="button"
+        class="rk-draw-pill w-full rounded-[28px] py-3 sm:py-4 flex flex-col items-center justify-between gap-2 text-white active:scale-95 transition min-h-[104px] sm:min-h-[132px]"
+        title="타일 뽑기 또는 턴 완료">
         <span id="btnEndTurnSymbol" class="text-3xl sm:text-4xl font-light text-amber-300 leading-none mt-1">+</span>
         <span id="btnEndTurnLabel" class="text-[9px] sm:text-[10px] font-bold text-blue-100/90 leading-tight text-center px-1">뽑기</span>
         <div class="flex items-center gap-0.5 text-[11px] sm:text-xs font-extrabold text-blue-100/90">
@@ -393,8 +473,10 @@
         </div>
       </button>
     </aside>
+
   </div>
 
+  <!-- FLOATING HOLD CHARGE RING -->
   <div id="holdRingContainer">
     <div class="flex flex-col items-center">
       <div class="relative w-11 h-11 rounded-full bg-slate-950/90 border border-white/25 shadow-2xl flex items-center justify-center">
@@ -409,87 +491,98 @@
       </div>
     </div>
   </div>
+
+  <!-- FLOATING DRAG LAYER -->
   <div id="dragLayer"></div>
 
-  <div id="lobbyModal" class="fixed inset-0 z-50 bg-slate-950/82 backdrop-blur-sm flex items-center justify-center p-4">
+  <!-- ONLINE MULTIPLAYER LOBBY & WAITING ROOM MODAL -->
+  <div id="lobbyModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="w-full max-w-md rounded-2xl bg-[#0b2759] border border-blue-400/45 shadow-2xl overflow-hidden">
       <div class="px-6 py-5 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 text-center">
-        <div class="text-xs font-bold text-amber-300 tracking-widest uppercase">The Original Online</div>
+        <div class="text-xs font-bold text-amber-300 tracking-widest uppercase">The Original · Online Multiplayer</div>
         <h1 class="text-3xl font-black text-white tracking-tight" style="font-family: 'Playfair Display', Georgia, serif;">Rummikub</h1>
-        <p id="connStatusText" class="text-[11px] text-emerald-300 font-semibold mt-1">● 실시간 서버 연결 대기 중...</p>
+        <p class="text-xs text-blue-200/85 mt-1">숫자 4자리 방 코드 · 2~4인 실시간 대전 · 턴당 40초</p>
       </div>
 
+      <!-- Entry View -->
       <div id="lobbyEntryView" class="p-6 space-y-4">
+        <div id="offlineNotice" class="hidden rounded-xl bg-amber-500/15 border border-amber-400/50 px-3 py-2 text-[11px] text-amber-200">
+          ⚠️ 실시간 멀티플레이 서버(Node.js + Socket.IO)에 연결되지 않았습니다. Render에 배포하거나 <code>npm start</code>로 실행해 접속해 주세요.
+        </div>
+
         <div>
-          <label for="playerNameInput" class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">플레이어 이름 (자동 저장)</label>
-          <input id="playerNameInput" type="text" maxlength="14" placeholder="닉네임을 입력하세요"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-blue-400/40 text-white font-bold text-sm focus:outline-none focus:border-amber-400" />
+          <label for="inputPlayerName" class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">플레이어 닉네임 (자동 저장)</label>
+          <input id="inputPlayerName" type="text" maxlength="14" placeholder="닉네임을 입력하세요"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-blue-950/85 border border-blue-500/60 text-white font-bold text-sm focus:outline-none focus:border-amber-400" />
         </div>
 
-        <div class="p-3.5 rounded-xl bg-blue-950/60 border border-blue-700/60 space-y-2.5">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-extrabold text-amber-300">새 방 만들기 (4자리 코드)</span>
-            <div class="flex gap-1" id="playerCountSelector">
-              <button type="button" data-count="2" class="count-opt px-2.5 py-1 rounded-lg font-extrabold text-xs border bg-blue-900 border-blue-700 text-blue-200">2인</button>
-              <button type="button" data-count="3" class="count-opt px-2.5 py-1 rounded-lg font-extrabold text-xs border bg-blue-900 border-blue-700 text-blue-200">3인</button>
-              <button type="button" data-count="4" class="count-opt px-2.5 py-1 rounded-lg font-extrabold text-xs border bg-amber-400 border-amber-200 text-slate-950">4인</button>
-            </div>
+        <div>
+          <label class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">방 만들기 인원 (2~4인)</label>
+          <div class="grid grid-cols-3 gap-2" id="playerCountSelector">
+            <button type="button" data-count="2" class="count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">2인</button>
+            <button type="button" data-count="3" class="count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">3인</button>
+            <button type="button" data-count="4" class="count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-amber-400 border-amber-200 text-slate-950 shadow-lg">4인</button>
           </div>
-          <button id="btnCreateRoom" type="button" class="w-full py-2.5 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-black text-sm shadow-lg transition active:scale-[0.99]">
-            방 만들기
+        </div>
+
+        <button id="btnCreateRoom" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-black text-sm shadow-xl transition active:scale-[0.99]">
+          ✨ 새 방 만들기 (숫자 4자리 코드)
+        </button>
+
+        <div class="flex items-center gap-2 text-[11px] text-blue-300/70">
+          <div class="flex-1 h-[1px] bg-blue-700/60"></div>
+          <span>또는 친구 방에 참여</span>
+          <div class="flex-1 h-[1px] bg-blue-700/60"></div>
+        </div>
+
+        <div class="flex gap-2">
+          <input id="inputRoomCode" type="text" inputmode="numeric" maxlength="4" placeholder="4자리 코드"
+            class="flex-1 px-3.5 py-2.5 rounded-xl bg-blue-950/85 border border-blue-500/60 text-white font-black text-center tracking-[0.35em] text-base focus:outline-none focus:border-amber-400" />
+          <button id="btnJoinRoom" type="button" class="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm shadow-lg transition">
+            입장
           </button>
-        </div>
-
-        <div class="p-3.5 rounded-xl bg-blue-950/60 border border-blue-700/60 space-y-2.5">
-          <span class="block text-xs font-extrabold text-sky-300">친구 방 참여하기</span>
-          <div class="flex gap-2">
-            <input id="joinCodeInput" type="text" inputmode="numeric" maxlength="4" placeholder="숫자 4자리"
-              class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-blue-400/40 text-center text-white font-black tracking-[0.35em] text-base focus:outline-none focus:border-sky-400" />
-            <button id="btnJoinRoom" type="button" class="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm shadow-lg transition">
-              입장
-            </button>
-          </div>
         </div>
       </div>
 
+      <!-- Waiting Room View -->
       <div id="lobbyWaitingView" class="hidden p-6 space-y-4">
-        <div class="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/65 border border-amber-400/50">
-          <div>
-            <div class="text-[11px] font-bold text-blue-200/80">참여 코드 (숫자 4자리)</div>
-            <div id="waitingRoomCode" class="text-3xl font-black text-amber-300 tracking-[0.25em]">----</div>
-          </div>
-          <button id="btnCopyCode" type="button" class="px-3 py-2 rounded-xl bg-amber-400/20 hover:bg-amber-400/35 border border-amber-300/60 text-amber-200 text-xs font-bold transition">
-            코드 복사
+        <div class="rounded-xl bg-blue-950/80 border border-amber-400/50 p-4 text-center">
+          <div class="text-[11px] font-bold text-blue-200">친구에게 알려줄 4자리 방 코드</div>
+          <div id="waitingRoomCode" class="text-4xl font-black text-amber-300 tracking-[0.28em] mt-1">0000</div>
+          <button id="btnCopyRoomCode" type="button" class="mt-2 px-3 py-1 rounded-full bg-amber-400/20 hover:bg-amber-400/35 border border-amber-400/60 text-amber-200 text-xs font-bold transition">
+            📋 코드 복사
           </button>
         </div>
 
         <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-xs font-bold text-blue-200">참여자 목록</span>
-            <span id="waitingCountText" class="text-xs font-extrabold text-amber-300">1 / 4명</span>
+          <div class="flex items-center justify-between text-xs font-bold text-blue-200 mb-2">
+            <span>참여자 목록</span>
+            <span id="waitingCountText" class="text-amber-300">1 / 4명</span>
           </div>
           <div id="waitingPlayersList" class="space-y-1.5"></div>
         </div>
 
         <div id="hostStartControls" class="hidden space-y-2">
-          <button id="btnStartHumans" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-lg transition">
-            현재 인원으로 게임 시작
+          <button id="btnStartMultiplayer" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-lg transition">
+            🎮 현재 인원으로 게임 시작
           </button>
-          <button id="btnStartWithAI" type="button" class="w-full py-2.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-300/60 text-amber-200 font-extrabold text-xs transition">
-            🤖 빈 자리 AI 채워서 시작하기
+          <button id="btnStartWithAI" type="button" class="w-full py-2.5 rounded-xl bg-blue-900 hover:bg-blue-800 border border-blue-500/60 text-blue-100 font-bold text-xs transition">
+            🤖 빈 자리 AI 채우고 바로 시작
           </button>
-        </div>
-        <div id="guestWaitNotice" class="hidden text-center text-xs text-blue-200/85 py-2">
-          방장이 게임을 시작할 때까지 기다려 주세요...
         </div>
 
-        <button id="btnLeaveWaiting" type="button" class="w-full py-2 rounded-xl bg-blue-950/80 hover:bg-blue-900 border border-blue-700 text-blue-200 text-xs font-bold transition">
+        <div id="guestWaitingNote" class="hidden text-center text-xs text-blue-200/80 py-2">
+          방장이 게임을 시작할 때까지 잠시 기다려 주세요…
+        </div>
+
+        <button id="btnLeaveWaiting" type="button" class="w-full py-2 rounded-xl bg-slate-900/70 hover:bg-slate-800 text-slate-300 font-bold text-xs transition">
           방 나가기
         </button>
       </div>
     </div>
   </div>
 
+  <!-- RULES & HELP MODAL -->
   <div id="helpModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl bg-[#0b2759] border border-blue-400/50 shadow-2xl overflow-hidden">
       <div class="flex items-center justify-between px-5 py-3.5 border-b border-blue-400/30">
@@ -500,29 +593,31 @@
         <div>
           <h3 class="font-extrabold text-amber-300 mb-1">1. 승리 조건 &amp; 첫 등록 (30점)</h3>
           <p>받침대의 모든 타일을 가장 먼저 내려놓으면 승리합니다. 첫 등록 시에는 내 패만으로 합계 <b>30점 이상</b>의 유효한 세트(<b>789</b> 연속 런 또는 <b>777</b> 같은 숫자 그룹)를 만들어 내려놓아야 합니다.</p>
+          <p class="mt-1">더미가 모두 소진되면 즉시 끝나지 않고 <b>마지막 패를 뽑은 플레이어 차례까지 1바퀴 더</b> 진행한 뒤 남은 패 합계로 승부합니다. 패 합계가 가장 적은 1등의 마이너스 점수를 0으로 만드는 만큼 다른 플레이어 점수에 각각 더하고, 그 보정 점수들의 합이 1등의 점수가 됩니다.</p>
         </div>
         <div>
-          <h3 class="font-extrabold text-amber-300 mb-1">2. 40초 제한시간 &amp; 페널티</h3>
-          <p>40초 안에 턴을 완료하지 못하면, 보드에 미완성 패가 남아 있는 경우 미완성 패를 회수하고 <b>페널티 3장</b>을 받습니다. 미완성 패가 없으면 메이드 패는 그대로 유지되고 강제로 <b>1장</b>을 받습니다.</p>
+          <h3 class="font-extrabold text-amber-300 mb-1">2. 40초 시간 제한 &amp; 페널티</h3>
+          <p>40초가 지났을 때 보드에 미완성(유효하지 않은) 패가 남아 있으면 미완성 패를 회수하고 <b>페널티 3장</b>을 받습니다. 보드의 패가 모두 메이드 상태이거나 내지 않은 채 시간이 끝나면 옮겨 둔 메이드 패는 유지하고 강제로 <b>1장</b>을 받습니다.</p>
         </div>
         <div>
           <h3 class="font-extrabold text-amber-300 mb-1">3. 스마트 조작</h3>
           <ul class="list-disc pl-5 space-y-1">
-            <li><b>789 / 777 &amp; 수동 정렬</b>: 상대 턴에도 언제든 자동 정렬 및 드래그 수동 정렬이 가능합니다.</li>
-            <li><b>0.25초 조건 충족 연속 선택</b>: 타일을 누르고 있으면 0.25초마다 같은 색 연속 숫자 또는 다른 색 같은 숫자 조건을 만족하는 뒤쪽 패만 순차 선택됩니다.</li>
-            <li><b>자석 스냅 · 자동 비켜주기 · 자동 분리</b>: 보드 어디든 자유롭게 놓으며, 메이드 패 옆에 다른 패를 놓으면 비켜서고, 긴 세트 중간에 끼워 넣으면 <b>✂ 자동 분리</b>됩니다.</li>
+            <li><b>우측 789 / 777 버튼 &amp; 수동 정렬</b>: 상대 턴에도 언제든 정렬하거나 받침대 안에서 직접 드래그해 순서를 바꿀 수 있습니다.</li>
+            <li><b>조건 충족 연속 선택</b>: 타일을 누르고 있으면 <b>0.25초마다</b> 같은 색 연속 숫자나 다른 색 같은 숫자 조건을 만족하는 뒤쪽 패만 순차 선택되며, 그대로 드래그해 옮길 수 있습니다.</li>
+            <li><b>자석 스냅 &amp; 자동 분리</b>: 메이드 패 옆에 다른 패를 놓으면 기존 메이드 패가 빈 자리로 비켜서고, 긴 런 중간에 패를 끼워 넣으면 <b>✂ 자동 분리</b>됩니다.</li>
           </ul>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- GAME OVER MODAL -->
   <div id="gameOverModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="w-full max-w-md rounded-2xl bg-[#0b2759] border border-amber-400/60 shadow-2xl overflow-hidden text-center">
       <div class="px-6 py-5 bg-gradient-to-b from-amber-500/25 to-transparent">
         <div class="text-4xl mb-1">🏆</div>
-        <h2 id="winnerTitle" class="text-2xl font-black text-amber-300">승리!</h2>
-        <p id="winnerSubtitle" class="text-xs text-blue-100/80 mt-1"></p>
+        <h2 id="winnerTitle" class="text-2xl font-black text-amber-300">루미큐브! 승리!</h2>
+        <p id="winnerSubtitle" class="text-xs text-blue-100/80 mt-1">모든 타일을 가장 먼저 내려놓았습니다.</p>
       </div>
       <div id="scoreTable" class="px-6 py-3 space-y-2 text-left"></div>
       <div class="p-5 border-t border-blue-800/70 flex gap-2">
@@ -530,7 +625,7 @@
           다시 하기
         </button>
         <button id="btnBackToLobby" type="button" class="px-4 py-3 rounded-xl bg-blue-900 hover:bg-blue-800 text-blue-100 font-bold text-sm transition">
-          나가기
+          로비
         </button>
       </div>
     </div>
@@ -540,11 +635,37 @@
   (() => {
     'use strict';
 
+    // ==================== SOCKET & SESSION ====================
+    const hasSocketIO = typeof window.io === 'function';
+    const socket = hasSocketIO
+      ? window.io()
+      : {
+          emit: (_ev, _data, cb) => { if (typeof cb === 'function') cb({ error: '실시간 서버에 연결되지 않았습니다.' }); },
+          on: () => {},
+        };
+
+    const offlineNotice = document.getElementById('offlineNotice');
+    if (!hasSocketIO && offlineNotice) offlineNotice.classList.remove('hidden');
+
+    function getOrCreateSessionId() {
+      let sid = '';
+      try { sid = localStorage.getItem('rummikub_session_id') || ''; } catch (_e) {}
+      if (!sid) {
+        sid = 'rk-' + Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36);
+        try { localStorage.setItem('rummikub_session_id', sid); } catch (_e) {}
+      }
+      return sid;
+    }
+
+    const sessionId = getOrCreateSessionId();
+
+    // ==================== CONSTANTS ====================
     const COLORS = ['black', 'red', 'blue', 'orange'];
     const COLOR_ORDER = { black: 0, red: 1, blue: 2, orange: 3 };
     const GRID_COLS = 22;
     const GRID_ROWS = 8;
     const TURN_SECONDS = 40;
+    const HOLD_STEP_SEC = 0.25;
     const MAGNET_COL_THRESHOLD = 1.38;
     const MAGNET_ROW_THRESHOLD = 0.78;
     const AVATAR_STYLES = [
@@ -554,32 +675,7 @@
       { bg: 'from-fuchsia-400 to-purple-700', emoji: '🕶️' },
     ];
 
-    function getOrCreateSessionId() {
-      try {
-        let sid = localStorage.getItem('rk_session_id');
-        if (!sid) {
-          sid = 's-' + Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
-          localStorage.setItem('rk_session_id', sid);
-        }
-        return sid;
-      } catch (_err) {
-        return 's-' + Math.random().toString(36).slice(2);
-      }
-    }
-
-    const sessionId = getOrCreateSessionId();
-    const hasSocketIO = typeof window.io === 'function';
-    const socket = hasSocketIO
-      ? window.io()
-      : {
-          on() {},
-          emit(_ev, _payload, cb) {
-            if (typeof cb === 'function') {
-              cb({ error: '멀티플레이 서버(Node.js)에 연결되지 않았습니다. Render 배포 주소나 npm start로 접속해 주세요.' });
-            }
-          },
-        };
-
+    // ==================== AUDIO ENGINE ====================
     let audioCtx = null;
     let soundEnabled = true;
 
@@ -589,7 +685,9 @@
         const AC = window.AudioContext || window.webkitAudioContext;
         if (AC) audioCtx = new AC();
       }
-      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
       return audioCtx;
     }
 
@@ -600,7 +698,9 @@
       const bufferSize = Math.floor(ctx.sampleRate * 0.032);
       const buf = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
       const data = buf.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+      }
       const noise = ctx.createBufferSource();
       noise.buffer = buf;
       const filter = ctx.createBiquadFilter();
@@ -610,7 +710,9 @@
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.32, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
-      noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
       noise.start(now);
 
       const osc = ctx.createOscillator();
@@ -620,8 +722,10 @@
       osc.frequency.exponentialRampToValueAtTime(160, now + 0.045);
       oscGain.gain.setValueAtTime(0.18, now);
       oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-      osc.connect(oscGain); oscGain.connect(ctx.destination);
-      osc.start(now); osc.stop(now + 0.055);
+      osc.connect(oscGain);
+      oscGain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.055);
     }
 
     function playHoldStage(stage) {
@@ -636,8 +740,10 @@
         osc.frequency.setValueAtTime(f, now + idx * 0.04);
         g.gain.setValueAtTime(0.14, now + idx * 0.04);
         g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.16);
-        osc.connect(g); g.connect(ctx.destination);
-        osc.start(now + idx * 0.04); osc.stop(now + idx * 0.04 + 0.18);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now + idx * 0.04);
+        osc.stop(now + idx * 0.04 + 0.18);
       });
     }
 
@@ -651,8 +757,10 @@
       osc.frequency.setValueAtTime(urgent ? 880 : 620, now);
       g.gain.setValueAtTime(urgent ? 0.09 : 0.04, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
-      osc.connect(g); g.connect(ctx.destination);
-      osc.start(now); osc.stop(now + 0.05);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.05);
     }
 
     function playMyTurnAlert() {
@@ -667,8 +775,10 @@
         osc.frequency.setValueAtTime(freq, t0);
         g.gain.setValueAtTime(0.22, t0);
         g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.24);
-        osc.connect(g); g.connect(ctx.destination);
-        osc.start(t0); osc.stop(t0 + 0.25);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.25);
       });
     }
 
@@ -683,8 +793,10 @@
         osc.frequency.setValueAtTime(f, now + i * 0.055);
         g.gain.setValueAtTime(0.12, now + i * 0.055);
         g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.25);
-        osc.connect(g); g.connect(ctx.destination);
-        osc.start(now + i * 0.055); osc.stop(now + i * 0.055 + 0.26);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now + i * 0.055);
+        osc.stop(now + i * 0.055 + 0.26);
       });
     }
 
@@ -699,10 +811,13 @@
       osc.frequency.linearRampToValueAtTime(140, now + 0.16);
       g.gain.setValueAtTime(0.1, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-      osc.connect(g); g.connect(ctx.destination);
-      osc.start(now); osc.stop(now + 0.19);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.19);
     }
 
+    // ==================== CLIENT STATE ====================
     let selectedMaxPlayers = 4;
 
     let state = {
@@ -712,11 +827,13 @@
       hostSessionId: null,
       players: [],
       myPlayerIndex: -1,
-      myRack: Array(20).fill(null),
       currentPlayerIndex: 0,
       poolCount: 106,
       timeLeft: TURN_SECONDS,
+      finalRoundTurnsLeft: null,
+      finalRoundTriggerName: null,
       board: Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null)),
+      myRack: Array(20).fill(null),
       playedFromRackIds: new Set(),
       recentAITileIds: new Set(),
       hasBoardChanged: false,
@@ -732,15 +849,21 @@
     let interact = {
       active: false,
       pointerId: null,
+      pointerType: 'mouse',
+      captureEl: null,
       originType: null,
       anchorTile: null,
       anchorPos: null,
       fullGroupTiles: [],
       selectedTiles: [],
+      draggingExistingLifted: false,
       startX: 0,
       startY: 0,
+      dragOriginX: 0,
+      dragOriginY: 0,
       currX: 0,
       currY: 0,
+      dragLiftY: 14,
       holdStart: 0,
       holdStage: 0,
       holdRaf: null,
@@ -749,17 +872,27 @@
     };
 
     let lifted = { active: false, originType: null, tiles: [] };
+    let pendingServerState = null;
 
+    // Dedicated ghost overlay inside boardGrid (updated without rebuilding DOM during drags)
+    const magnetGhost = document.createElement('div');
+    magnetGhost.id = 'magnetGhost';
+    magnetGhost.className = 'magnet-ghost';
+    magnetGhost.style.display = 'none';
+
+    // ==================== DOM REFS ====================
     const boardViewport = document.getElementById('boardViewport');
     const boardGrid = document.getElementById('boardGrid');
     const rackRow0 = document.getElementById('rackRow0');
     const rackRow1 = document.getElementById('rackRow1');
+    const woodRack = document.getElementById('woodRack');
     const playersBar = document.getElementById('playersBar');
     const poolCountBadge = document.getElementById('poolCountBadge');
     const roomCodeBadgeWrap = document.getElementById('roomCodeBadgeWrap');
     const hudRoomCode = document.getElementById('hudRoomCode');
     const turnStatusText = document.getElementById('turnStatusText');
     const meldStatusBadge = document.getElementById('meldStatusBadge');
+    const finalRoundBadge = document.getElementById('finalRoundBadge');
     const btnSortRun = document.getElementById('btnSortRun');
     const btnSortGroup = document.getElementById('btnSortGroup');
     const btnEndTurn = document.getElementById('btnEndTurn');
@@ -780,47 +913,26 @@
     const lobbyModal = document.getElementById('lobbyModal');
     const lobbyEntryView = document.getElementById('lobbyEntryView');
     const lobbyWaitingView = document.getElementById('lobbyWaitingView');
-    const connStatusText = document.getElementById('connStatusText');
-    const playerNameInput = document.getElementById('playerNameInput');
-    const joinCodeInput = document.getElementById('joinCodeInput');
+    const inputPlayerName = document.getElementById('inputPlayerName');
+    const inputRoomCode = document.getElementById('inputRoomCode');
     const waitingRoomCode = document.getElementById('waitingRoomCode');
     const waitingCountText = document.getElementById('waitingCountText');
     const waitingPlayersList = document.getElementById('waitingPlayersList');
     const hostStartControls = document.getElementById('hostStartControls');
-    const guestWaitNotice = document.getElementById('guestWaitNotice');
+    const guestWaitingNote = document.getElementById('guestWaitingNote');
     const helpModal = document.getElementById('helpModal');
     const gameOverModal = document.getElementById('gameOverModal');
 
-    if (!hasSocketIO) {
-      connStatusText.textContent = '● 서버 미연결 (npm start 또는 Render 배포 주소에서 실행하세요)';
-      connStatusText.className = 'text-[11px] text-amber-300 font-semibold mt-1';
-    }
-
+    // Load saved nickname
     try {
-      const savedName = localStorage.getItem('rk_player_name');
-      if (savedName) playerNameInput.value = savedName;
-    } catch (_err) {}
+      const savedName = localStorage.getItem('rummikub_nickname');
+      if (savedName) inputPlayerName.value = savedName;
+    } catch (_e) {}
 
-    function getSavedName() {
-      const n = (playerNameInput.value || '').trim().slice(0, 14) || '플레이어';
-      try { localStorage.setItem('rk_player_name', n); } catch (_err) {}
-      return n;
-    }
-
-    function copyTextToClipboard(text) {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        showToast(`방 코드 ${text} 복사 완료!`, 'success');
-      } catch (_err) {
-        showToast(`방 코드: ${text}`);
-      }
-      document.body.removeChild(ta);
+    function saveNickname() {
+      const name = (inputPlayerName.value || '').trim().slice(0, 14);
+      try { if (name) localStorage.setItem('rummikub_nickname', name); } catch (_e) {}
+      return name || '플레이어';
     }
 
     let toastTimer = null;
@@ -839,7 +951,7 @@
       toastTimer = setTimeout(() => {
         toastBox.classList.add('opacity-0', 'translate-y-2');
         toastBox.classList.remove('opacity-100', 'translate-y-0');
-      }, 2600);
+      }, 2400);
     }
 
     let myTurnAlertTimer = null;
@@ -847,11 +959,12 @@
       playMyTurnAlert();
       myTurnAlertEl.classList.remove('hidden');
       if (myTurnAlertTimer) clearTimeout(myTurnAlertTimer);
-      myTurnAlertTimer = setTimeout(() => myTurnAlertEl.classList.add('hidden'), 2400);
+      myTurnAlertTimer = setTimeout(() => myTurnAlertEl.classList.add('hidden'), 2200);
     }
 
+    // ==================== HELPERS & VALIDATION ====================
     function isMyTurn() {
-      return state.phase === 'playing' && state.myPlayerIndex >= 0 && state.myPlayerIndex === state.currentPlayerIndex;
+      return state.phase === 'playing' && state.myPlayerIndex >= 0 && state.currentPlayerIndex === state.myPlayerIndex;
     }
 
     function getRackTiles() {
@@ -930,6 +1043,7 @@
       return groups;
     }
 
+    // ==================== SORTING (789 & 777) ====================
     function extractMadeRuns(tiles) {
       const used = new Set();
       const runs = [];
@@ -946,7 +1060,12 @@
             if (byNum.has(n)) {
               const seq = [];
               while (n <= 13 && byNum.has(n)) { seq.push(byNum.get(n)); n++; }
-              if (seq.length >= 3) { seq.forEach((t) => used.add(t.id)); runs.push(seq); found = true; break; }
+              if (seq.length >= 3) {
+                seq.forEach((t) => used.add(t.id));
+                runs.push(seq);
+                found = true;
+                break;
+              }
             } else n++;
           }
         }
@@ -968,7 +1087,11 @@
             const m = tiles.find((t) => !t.isJoker && !used.has(t.id) && t.num === num && t.color === color && !seen.has(color));
             if (m) { seen.add(color); picked.push(m); }
           }
-          if (picked.length >= 3) { picked.forEach((t) => used.add(t.id)); groups.push(picked); found = true; }
+          if (picked.length >= 3) {
+            picked.forEach((t) => used.add(t.id));
+            groups.push(picked);
+            found = true;
+          }
         }
       }
       return { made: groups, remaining: tiles.filter((t) => !used.has(t.id)) };
@@ -988,7 +1111,7 @@
       return a.id - b.id;
     }
 
-    function placeSortedGroupsOnRack(madeSets, remainingTiles) {
+    function placeSortedGroupsOnMyRack(madeSets, remainingTiles) {
       const totalTiles = madeSets.reduce((sum, s) => sum + s.length, 0) + remainingTiles.length;
       const gapCount = madeSets.length;
       const slotsPerRow = Math.max(10, Math.ceil((totalTiles + gapCount + 1) / 2) + 1);
@@ -1017,16 +1140,16 @@
       }
       if (rack.length % 2 !== 0) rack.push(null);
       state.myRack = rack;
-      socket.emit('game:syncRack', { rack: state.myRack });
     }
 
     function sortRackByRun() {
       if (state.phase !== 'playing') return;
       clearLifted();
       const runPass = extractMadeRuns(getRackTiles());
-      placeSortedGroupsOnRack(runPass.made, [...runPass.remaining].sort(compareByRun));
+      placeSortedGroupsOnMyRack(runPass.made, [...runPass.remaining].sort(compareByRun));
       playClack(true);
       renderRack();
+      socket.emit('game:syncRack', { rack: state.myRack });
       showToast(runPass.made.length > 0 ? `789 연속 정렬 (연속 메이드 ${runPass.made.length}세트 앞쪽 배치)` : '789 연속 정렬 완료');
     }
 
@@ -1034,12 +1157,14 @@
       if (state.phase !== 'playing') return;
       clearLifted();
       const grpPass = extractMadeGroups(getRackTiles());
-      placeSortedGroupsOnRack(grpPass.made, [...grpPass.remaining].sort(compareByGroup));
+      placeSortedGroupsOnMyRack(grpPass.made, [...grpPass.remaining].sort(compareByGroup));
       playClack(true);
       renderRack();
+      socket.emit('game:syncRack', { rack: state.myRack });
       showToast(grpPass.made.length > 0 ? `777 숫자 정렬 (숫자 메이드 ${grpPass.made.length}세트 앞쪽 배치)` : '777 숫자 정렬 완료');
     }
 
+    // ==================== COMPATIBLE CHAIN & MADE SET DETECTION ====================
     function getBoardContiguousGroup(row, col) {
       if (!state.board[row] || !state.board[row][col]) return [];
       let cStart = col;
@@ -1084,7 +1209,20 @@
         if (!cur.tile.isJoker && cur.tile.color === first.tile.color && cur.tile.num === expectedNum) {
           runChain.push(cur);
           expectedNum++;
-        } else if (cur.tile.isJoker && expectedNum <= 13 && runChain.length >= 2) {
+        } else if (
+          cur.tile.isJoker &&
+          expectedNum <= 13 &&
+          (
+            runChain.length >= 2 ||
+            (
+              i + 1 < items.length &&
+              items[i + 1]?.tile &&
+              !items[i + 1].tile.isJoker &&
+              items[i + 1].tile.color === first.tile.color &&
+              items[i + 1].tile.num === expectedNum + 1
+            )
+          )
+        ) {
           runChain.push(cur);
           expectedNum++;
         } else break;
@@ -1109,6 +1247,28 @@
     function findMadeSetForRackTile(rackIdx) {
       const clicked = state.myRack[rackIdx];
       if (!clicked) return null;
+
+      // 1. Prefer an actually contiguous valid made set right where the user clicked
+      const contiguous = getRackRowContiguousItems(rackIdx);
+      const anchorIdx = contiguous.findIndex((item) => item.tile.id === clicked.id);
+      if (anchorIdx >= 0 && contiguous.length >= 3) {
+        const fullTiles = contiguous.map((x) => x.tile);
+        if (validateSet(fullTiles).valid) return fullTiles;
+
+        let bestSub = null;
+        for (let s = 0; s <= anchorIdx; s++) {
+          for (let e = Math.max(anchorIdx, s + 2); e < contiguous.length; e++) {
+            const sub = fullTiles.slice(s, e + 1);
+            const v = validateSet(sub);
+            if (v.valid && (!bestSub || sub.length > bestSub.tiles.length || (sub.length === bestSub.tiles.length && v.points > bestSub.points))) {
+              bestSub = { tiles: sub, points: v.points };
+            }
+          }
+        }
+        if (bestSub) return bestSub.tiles;
+      }
+
+      // 2. Fallback: search rack for a valid made set containing clicked tile
       const allTiles = getRackTiles();
       const jokers = allTiles.filter((t) => t.isJoker && t.id !== clicked.id);
       const candidates = [];
@@ -1155,6 +1315,7 @@
       return candidates[0].tiles;
     }
 
+    // ==================== MAGNETIC SNAP, AUTO-SPLIT & AUTO-RELOCATE ====================
     function isAreaFreeOnBoard(row, col, len, ignoreIds) {
       if (row < 0 || row >= GRID_ROWS || col < 0 || col + len > GRID_COLS) return false;
       for (let i = 0; i < len; i++) {
@@ -1198,10 +1359,11 @@
     }
 
     function findMagneticBoardTarget(clientX, clientY, draggingTiles) {
-      const rect = boardGrid.getBoundingClientRect();
-      if (clientX < rect.left - 24 || clientX > rect.right + 24 || clientY < rect.top - 24 || clientY > rect.bottom + 24) {
+      const vpRect = boardViewport.getBoundingClientRect();
+      if (clientX < vpRect.left - 16 || clientX > vpRect.right + 16 || clientY < vpRect.top - 16 || clientY > vpRect.bottom + 8) {
         return null;
       }
+      const rect = boardGrid.getBoundingClientRect();
 
       const len = draggingTiles.length;
       const ignoreIds = new Set(draggingTiles.map((t) => t.id));
@@ -1210,6 +1372,7 @@
       const fCol = state.viewColStart + (groupLeftX - rect.left) / state.cellW;
       const fRow = state.viewRowStart + (clientY - rect.top - state.cellH / 2) / state.cellH;
 
+      // 0. Hovering over existing set -> auto-split check
       const hoverRow = state.viewRowStart + Math.floor((clientY - rect.top) / state.cellH);
       const hoverCol = state.viewColStart + Math.floor((clientX - rect.left) / state.cellW);
       if (hoverRow >= 0 && hoverRow < GRID_ROWS && hoverCol >= 0 && hoverCol < GRID_COLS) {
@@ -1228,6 +1391,7 @@
         }
       }
 
+      // 1. Magnetic attraction to existing sets' left/right edges
       let bestMagnet = null;
       let bestDist = Infinity;
       for (let r = 0; r < GRID_ROWS; r++) {
@@ -1265,6 +1429,7 @@
         return { type: 'board', row: bestMagnet.row, col: bestMagnet.col, isMagnet: true, isValidMerge: validMerge };
       }
 
+      // 2. Free placement anywhere inside visible board
       const baseCol = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
       const baseRow = Math.max(0, Math.min(GRID_ROWS - 1, Math.round(fRow)));
       if (isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
@@ -1275,14 +1440,36 @@
     }
 
     function findRackDropTarget(clientX, clientY) {
-      const el = document.elementFromPoint(clientX, clientY);
-      if (!el) return null;
-      const slot = el.closest('.rack-slot');
-      if (slot && slot.dataset.rackIdx !== undefined) return { type: 'rack', idx: parseInt(slot.dataset.rackIdx, 10) };
-      if (el.closest('#woodRack')) return { type: 'rack', idx: -1 };
-      return null;
+      const rackRect = woodRack.getBoundingClientRect();
+      const padX = 16;
+      const padTop = 4;
+      const padBot = 24;
+      if (
+        clientX < rackRect.left - padX ||
+        clientX > rackRect.right + padX ||
+        clientY < rackRect.top - padTop ||
+        clientY > rackRect.bottom + padBot
+      ) {
+        return null;
+      }
+
+      const slots = woodRack.querySelectorAll('.rack-slot');
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (const slot of slots) {
+        const sr = slot.getBoundingClientRect();
+        const cx = (sr.left + sr.right) / 2;
+        const cy = (sr.top + sr.bottom) / 2;
+        const dist = Math.hypot(clientX - cx, (clientY - cy) * 1.4);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = parseInt(slot.dataset.rackIdx, 10);
+        }
+      }
+      return { type: 'rack', idx: bestIdx };
     }
 
+    // ==================== TILE ELEMENT BUILDER ====================
     function createClassicJokerSVG(color, sizePx) {
       const stroke = color === 'red' ? '#c81912' : '#111827';
       return `
@@ -1311,7 +1498,7 @@
         el.innerHTML = createClassicJokerSVG(tile.color, Math.round(Math.min(width, height) * 0.72));
       } else {
         const numSpan = document.createElement('span');
-        const ratio = tile.num >= 10 ? 0.64 : 0.76;
+        const ratio = tile.num >= 10 ? 0.62 : 0.74;
         const fontSize = Math.max(12, Math.round(width * ratio));
         numSpan.className = `rk-tile-num rk-color-${tile.color}`;
         numSpan.style.fontSize = `${fontSize}px`;
@@ -1330,6 +1517,7 @@
       return el;
     }
 
+    // ==================== DYNAMIC AUTO-SCALING BOARD DIMENSIONS ====================
     function computeBoardDimensions(lockScale = false) {
       const rect = boardViewport.getBoundingClientRect();
       const isNarrow = window.innerWidth < 640;
@@ -1398,6 +1586,7 @@
       boardGrid.style.height = `${cellH * state.viewRows}px`;
     }
 
+    // ==================== RENDERING ====================
     function renderAll() {
       computeBoardDimensions(interact.isDragging);
       renderPlayersSidebar();
@@ -1413,10 +1602,10 @@
 
       const ordered = [];
       for (let i = 0; i < state.players.length; i++) {
-        if (i !== state.myPlayerIndex) ordered.push(state.players[i]);
+        if (i !== state.myPlayerIndex) ordered.push({ p: state.players[i], idx: i });
       }
       if (state.myPlayerIndex >= 0 && state.players[state.myPlayerIndex]) {
-        ordered.push(state.players[state.myPlayerIndex]);
+        ordered.push({ p: state.players[state.myPlayerIndex], idx: state.myPlayerIndex });
       }
 
       const circ = 163.36;
@@ -1424,17 +1613,17 @@
       const dashOffset = circ * (1 - timerRatio);
       const ringColor = state.timeLeft <= 8 ? '#f43f5e' : state.timeLeft <= 15 ? '#facc15' : '#4ade80';
 
-      ordered.forEach((p) => {
-        const isCurr = p.index === state.currentPlayerIndex && state.phase === 'playing';
-        const isMe = p.index === state.myPlayerIndex;
-        const av = AVATAR_STYLES[p.index % AVATAR_STYLES.length];
+      ordered.forEach(({ p, idx }) => {
+        const isCurr = idx === state.currentPlayerIndex && state.phase === 'playing';
+        const isMe = idx === state.myPlayerIndex;
+        const av = AVATAR_STYLES[idx % AVATAR_STYLES.length];
 
         const seat = document.createElement('div');
         seat.className = 'flex flex-col items-center gap-0.5';
         seat.innerHTML = `
-          <div class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''} ${!p.connected ? 'opacity-50' : ''}">
+          <div class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''}">
             <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-xl sm:text-2xl shadow-inner relative overflow-hidden">
-              <span class="${isCurr ? 'opacity-45' : ''}">${p.isAI ? av.emoji : (isMe ? '🧑' : av.emoji)}</span>
+              <span class="${isCurr ? 'opacity-45' : ''}">${p.isAI ? '🤖' : (isMe ? '🧑' : av.emoji)}</span>
               ${isCurr ? `<span id="activeAvatarTimer" class="absolute inset-0 flex items-center justify-center text-lg sm:text-xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">${Math.max(0, state.timeLeft)}</span>` : ''}
             </div>
             ${isCurr ? `
@@ -1444,6 +1633,7 @@
               </svg>
             ` : ''}
             ${p.hasMelded ? '<span class="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 border border-white text-[10px] font-black text-slate-950 flex items-center justify-center shadow" title="30점 첫 등록 완료">★</span>' : ''}
+            ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-rose-500 border border-white text-[9px] font-black text-white flex items-center justify-center" title="연결 끊김">!</span>' : ''}
           </div>
           <div class="px-1.5 py-0.5 rounded bg-slate-950/70 border ${isMe ? 'border-amber-400/60' : 'border-blue-400/25'} text-[10px] font-bold text-blue-100 flex items-center gap-1 max-w-full shadow">
             <span class="truncate max-w-[36px] sm:max-w-[46px]">${p.name}</span>
@@ -1474,18 +1664,19 @@
         hudRoomCode.textContent = state.code;
       } else {
         roomCodeBadgeWrap.classList.add('hidden');
-        roomCodeBadgeWrap.classList.remove('flex');
       }
 
       const curr = state.players[state.currentPlayerIndex];
-      const me = state.players[state.myPlayerIndex];
-      if (!curr) return;
-
+      const me = state.myPlayerIndex >= 0 ? state.players[state.myPlayerIndex] : null;
       const evalRes = state.evalState;
-      if (isMyTurn()) {
-        turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>내 차례 — ${evalRes ? evalRes.reason : ''}</span>`;
-      } else {
-        turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping"></span><span>${curr.name} 차례 진행 중...</span>`;
+
+      if (curr) {
+        if (isMyTurn()) {
+          const reason = evalRes ? evalRes.reason : '내 차례입니다!';
+          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>내 차례 — ${reason}</span>`;
+        } else {
+          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping"></span><span>${curr.name} 진행 중...</span>`;
+        }
       }
 
       if (me && me.hasMelded) {
@@ -1497,6 +1688,53 @@
         meldStatusBadge.className = pts >= 30
           ? 'px-2.5 py-1 rounded-full bg-emerald-950/75 border border-emerald-400 text-emerald-200 text-[11px] font-bold backdrop-blur-sm'
           : 'px-2.5 py-1 rounded-full bg-slate-950/60 border border-amber-400/50 text-amber-200 text-[11px] font-bold backdrop-blur-sm';
+      }
+
+      if (state.finalRoundTurnsLeft !== null && state.phase === 'playing') {
+        finalRoundBadge.classList.remove('hidden');
+        finalRoundBadge.textContent = `🔥 마지막 라운드 (${state.finalRoundTurnsLeft}턴 남음)`;
+      } else {
+        finalRoundBadge.classList.add('hidden');
+      }
+    }
+
+    function syncSelectionVisuals() {
+      const draggingIds = interact.isDragging ? new Set(interact.selectedTiles.map((t) => t.id)) : new Set();
+      const liftedIds = lifted.active ? new Set(lifted.tiles.map((t) => t.id)) : new Set();
+      const holdPreviewIds = (!interact.isDragging && interact.active && interact.holdStage >= 1)
+        ? new Set(interact.selectedTiles.map((t) => t.id))
+        : new Set();
+      const isFullHold = interact.holdStage >= interact.fullGroupTiles.length && interact.fullGroupTiles.length > 1;
+
+      document.querySelectorAll('#boardGrid .rk-tile, #woodRack .rk-tile').forEach((el) => {
+        const id = Number(el.dataset.tileId);
+        el.classList.toggle('lifted-selected', liftedIds.has(id));
+        el.classList.toggle('hold-preview-selected', holdPreviewIds.has(id) && !isFullHold);
+        el.classList.toggle('hold-preview-full', holdPreviewIds.has(id) && isFullHold);
+        el.style.opacity = draggingIds.has(id) ? '0.22' : '';
+      });
+    }
+
+    function updateMagnetGhost(st) {
+      if (!interact.isDragging || !st || (st.type !== 'board' && st.type !== 'board-split')) {
+        magnetGhost.style.display = 'none';
+        return;
+      }
+      magnetGhost.style.display = '';
+      if (st.type === 'board-split') {
+        magnetGhost.className = 'magnet-ghost snapped-valid flex items-center justify-center';
+        magnetGhost.style.left = `${(st.groupStart - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow">✂ 자동 분리</span>';
+      } else {
+        magnetGhost.className = 'magnet-ghost ' + (st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free');
+        magnetGhost.style.left = `${(st.col - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '';
       }
     }
 
@@ -1519,31 +1757,8 @@
         boardGrid.appendChild(frame);
       }
 
-      if (interact.isDragging && interact.snapTarget && (interact.snapTarget.type === 'board' || interact.snapTarget.type === 'board-split')) {
-        const st = interact.snapTarget;
-        const ghost = document.createElement('div');
-        if (st.type === 'board-split') {
-          ghost.className = 'magnet-ghost snapped-valid flex items-center justify-center';
-          ghost.style.left = `${(st.groupStart - state.viewColStart) * state.cellW + 1}px`;
-          ghost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
-          ghost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
-          ghost.style.height = `${state.cellH - 2}px`;
-          ghost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow">✂ 자동 분리</span>';
-        } else {
-          ghost.className = 'magnet-ghost ' + (st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free');
-          ghost.style.left = `${(st.col - state.viewColStart) * state.cellW + 1}px`;
-          ghost.style.top = `${(st.row - state.viewRowStart) * state.cellH + 1}px`;
-          ghost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
-          ghost.style.height = `${state.cellH - 2}px`;
-        }
-        boardGrid.appendChild(ghost);
-      }
-
-      const draggingIds = interact.isDragging ? new Set(interact.selectedTiles.map((t) => t.id)) : new Set();
-      const liftedIds = lifted.active ? new Set(lifted.tiles.map((t) => t.id)) : new Set();
-      const holdPreviewIds = (!interact.isDragging && interact.active && interact.holdStage >= 1)
-        ? new Set(interact.selectedTiles.map((t) => t.id))
-        : new Set();
+      boardGrid.appendChild(magnetGhost);
+      updateMagnetGhost(interact.snapTarget);
 
       const tileW = Math.max(11, state.cellW - 2);
       const tileH = Math.max(16, state.cellH - 2);
@@ -1557,24 +1772,21 @@
           if (state.playedFromRackIds.has(tile.id)) extra += ' from-rack-this-turn';
           if (state.recentAITileIds.has(tile.id)) extra += ' ai-highlight';
           if (justSnappedIds.has(tile.id)) extra += ' snap-pop';
-          if (liftedIds.has(tile.id)) extra += ' lifted-selected';
-          if (holdPreviewIds.has(tile.id)) {
-            extra += (interact.holdStage >= interact.fullGroupTiles.length && interact.fullGroupTiles.length > 1)
-              ? ' hold-preview-full'
-              : ' hold-preview-selected';
-          }
 
           const el = buildTileElement(tile, tileW, tileH, extra);
           el.style.position = 'absolute';
           el.style.left = `${(c - state.viewColStart) * state.cellW + 1}px`;
           el.style.top = `${(r - state.viewRowStart) * state.cellH + 1}px`;
           el.style.zIndex = '10';
-          if (draggingIds.has(tile.id)) el.style.opacity = '0.22';
 
-          el.addEventListener('pointerdown', (e) => onTilePointerDown(e, 'board', tile, { row: r, col: c }));
+          el.addEventListener('pointerdown', (e) => onTilePointerDown(e, 'board', tile, { row: r, col: c }, el));
+          el.addEventListener('dragstart', (e) => e.preventDefault());
+          el.addEventListener('contextmenu', (e) => e.preventDefault());
           boardGrid.appendChild(el);
         }
       }
+
+      syncSelectionVisuals();
     }
 
     function renderRack() {
@@ -1594,12 +1806,6 @@
       const tileW = Math.max(20, Math.min(54, maxTileWByW, maxTileWByH));
       const tileH = Math.round(tileW * 1.38);
 
-      const draggingIds = interact.isDragging ? new Set(interact.selectedTiles.map((t) => t.id)) : new Set();
-      const liftedIds = lifted.active ? new Set(lifted.tiles.map((t) => t.id)) : new Set();
-      const holdPreviewIds = (!interact.isDragging && interact.active && interact.holdStage >= 1)
-        ? new Set(interact.selectedTiles.map((t) => t.id))
-        : new Set();
-
       for (let i = 0; i < state.myRack.length; i++) {
         const slot = document.createElement('div');
         slot.className = 'rack-slot shrink-0';
@@ -1609,25 +1815,26 @@
 
         const tile = state.myRack[i];
         if (tile) {
-          let extra = '';
-          if (liftedIds.has(tile.id)) extra += ' lifted-selected';
-          if (holdPreviewIds.has(tile.id)) {
-            extra += (interact.holdStage >= interact.fullGroupTiles.length && interact.fullGroupTiles.length > 1)
-              ? ' hold-preview-full'
-              : ' hold-preview-selected';
-          }
-          const el = buildTileElement(tile, tileW, tileH, extra);
-          if (draggingIds.has(tile.id)) el.style.opacity = '0.22';
-          el.addEventListener('pointerdown', (e) => {
+          const el = buildTileElement(tile, tileW, tileH);
+          const handleDown = (e) => {
             if (state.phase !== 'playing') return;
-            onTilePointerDown(e, 'rack', tile, { idx: i });
+            onTilePointerDown(e, 'rack', tile, { idx: i }, el);
+          };
+          el.addEventListener('pointerdown', handleDown);
+          el.addEventListener('dragstart', (e) => e.preventDefault());
+          el.addEventListener('contextmenu', (e) => e.preventDefault());
+          slot.addEventListener('pointerdown', (e) => {
+            if (e.target === slot) handleDown(e);
           });
+          slot.addEventListener('contextmenu', (e) => e.preventDefault());
           slot.appendChild(el);
         }
 
         if (i < rowSize) rackRow0.appendChild(slot);
         else rackRow1.appendChild(slot);
       }
+
+      syncSelectionVisuals();
     }
 
     function updateControls() {
@@ -1667,67 +1874,125 @@
       }
     }
 
+    // ==================== POINTER INTERACTION ====================
     function clearLifted() {
       if (!lifted.active) return;
       lifted.active = false;
       lifted.tiles = [];
       lifted.originType = null;
       updateControls();
-      renderBoard();
-      renderRack();
+      syncSelectionVisuals();
     }
 
-    function onTilePointerDown(e, originType, tile, pos) {
-      if (e.button !== 0 && e.pointerType === 'mouse') return;
+    function releaseActiveCapture() {
+      if (interact.captureEl && interact.pointerId !== null) {
+        try {
+          if (interact.captureEl.hasPointerCapture && interact.captureEl.hasPointerCapture(interact.pointerId)) {
+            interact.captureEl.releasePointerCapture(interact.pointerId);
+          }
+        } catch (_err) {}
+      }
+      interact.captureEl = null;
+    }
+
+    function forceResetInteraction() {
+      window.removeEventListener('pointermove', onGlobalPointerMove);
+      window.removeEventListener('pointerup', onGlobalPointerUp);
+      window.removeEventListener('pointercancel', onGlobalPointerUp);
+      releaseActiveCapture();
+      cancelHoldLoop();
+      dragLayer.style.display = 'none';
+      magnetGhost.style.display = 'none';
+      highlightRackHover(null);
+      interact.active = false;
+      interact.pointerId = null;
+      interact.isDragging = false;
+      interact.draggingExistingLifted = false;
+      interact.holdStage = 0;
+      interact.snapTarget = null;
+      syncSelectionVisuals();
+    }
+
+    function onTilePointerDown(e, originType, tile, pos, captureTarget = null) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (state.phase !== 'playing') return;
       if (originType === 'board' && !isMyTurn()) return;
+
+      if (interact.active) {
+        if (e.pointerType === 'mouse' || interact.pointerType === 'mouse') {
+          forceResetInteraction();
+        } else {
+          return;
+        }
+      }
 
       e.preventDefault();
       e.stopPropagation();
       ensureAudio();
 
-      if (lifted.active) {
-        const isSameLifted = lifted.tiles.some((t) => t.id === tile.id);
-        if (!isSameLifted) clearLifted();
+      const alreadyInLifted = lifted.active && lifted.tiles.some((t) => t.id === tile.id);
+      if (lifted.active && !alreadyInLifted) {
+        lifted.active = false;
+        lifted.tiles = [];
+        lifted.originType = null;
+        updateControls();
       }
-
-      const rawGroup = originType === 'board'
-        ? getBoardContiguousGroup(pos.row, pos.col)
-        : getRackRowContiguousItems(pos.idx);
-      const anchorIdx = rawGroup.findIndex((item) => item.tile.id === tile.id);
-      const forwardGroup = anchorIdx >= 0 ? getCompatibleForwardChain(rawGroup, anchorIdx) : [{ tile }];
-      const canHoldExpand = forwardGroup.length >= 2;
 
       interact.active = true;
       interact.pointerId = e.pointerId;
+      interact.pointerType = e.pointerType || 'mouse';
+      interact.captureEl = captureTarget || e.currentTarget || null;
       interact.originType = originType;
       interact.anchorTile = tile;
       interact.anchorPos = pos;
-      interact.fullGroupTiles = forwardGroup;
-      interact.selectedTiles = [tile];
+      interact.draggingExistingLifted = alreadyInLifted;
       interact.startX = e.clientX;
       interact.startY = e.clientY;
+      interact.dragOriginX = e.clientX;
+      interact.dragOriginY = e.clientY;
       interact.currX = e.clientX;
       interact.currY = e.clientY;
+      interact.dragLiftY = e.pointerType === 'touch' ? 30 : 8;
       interact.holdStart = performance.now();
-      interact.holdStage = canHoldExpand ? 1 : 0;
       interact.isDragging = false;
       interact.snapTarget = null;
 
-      if (canHoldExpand) {
-        renderBoard();
-        renderRack();
-        holdRingContainer.style.display = 'block';
-        holdRingContainer.style.left = `${e.clientX}px`;
-        holdRingContainer.style.top = `${e.clientY - 22}px`;
-        holdRingCount.textContent = '1';
-        holdRingLabel.textContent = '1개 선택됨 (0.25초마다 뒤로 +1개)';
-        holdRingArc.style.stroke = '#38bdf8';
-        holdRingArc.style.strokeDashoffset = '100.53';
-        startHoldLoop();
+      if (interact.captureEl && interact.captureEl.setPointerCapture) {
+        try { interact.captureEl.setPointerCapture(e.pointerId); } catch (_err) {}
       }
 
-      window.addEventListener('pointermove', onGlobalPointerMove);
+      if (alreadyInLifted) {
+        interact.fullGroupTiles = lifted.tiles.map((t) => ({ tile: t }));
+        interact.selectedTiles = [...lifted.tiles];
+        interact.holdStage = 0;
+        syncSelectionVisuals();
+      } else {
+        const rawGroup = originType === 'board'
+          ? getBoardContiguousGroup(pos.row, pos.col)
+          : getRackRowContiguousItems(pos.idx);
+        const anchorIdx = rawGroup.findIndex((item) => item.tile.id === tile.id);
+        const forwardGroup = anchorIdx >= 0 ? getCompatibleForwardChain(rawGroup, anchorIdx) : [{ tile }];
+        const canHoldExpand = forwardGroup.length >= 2;
+
+        interact.fullGroupTiles = forwardGroup;
+        interact.selectedTiles = [tile];
+        interact.holdStage = canHoldExpand ? 1 : 0;
+
+        syncSelectionVisuals();
+
+        if (canHoldExpand) {
+          holdRingContainer.style.display = 'block';
+          holdRingContainer.style.left = `${e.clientX}px`;
+          holdRingContainer.style.top = `${e.clientY - 24}px`;
+          holdRingCount.textContent = '1';
+          holdRingLabel.textContent = '1개 선택됨 (누르면 뒤로 +1개)';
+          holdRingArc.style.stroke = '#38bdf8';
+          holdRingArc.style.strokeDashoffset = '100.53';
+          startHoldLoop();
+        }
+      }
+
+      window.addEventListener('pointermove', onGlobalPointerMove, { passive: false });
       window.addEventListener('pointerup', onGlobalPointerUp);
       window.addEventListener('pointercancel', onGlobalPointerUp);
     }
@@ -1735,7 +2000,6 @@
     function startHoldLoop() {
       cancelHoldLoop();
       const totalLen = interact.fullGroupTiles.length;
-      const HOLD_STEP_SEC = 0.25;
 
       function tick() {
         if (!interact.active || interact.isDragging) return;
@@ -1749,18 +2013,19 @@
         if (newCount !== interact.holdStage) {
           interact.holdStage = newCount;
           interact.selectedTiles = interact.fullGroupTiles.slice(0, newCount).map((x) => x.tile);
+          interact.dragOriginX = interact.currX;
+          interact.dragOriginY = interact.currY;
           holdRingCount.textContent = String(newCount);
           if (newCount >= totalLen) {
-            holdRingLabel.textContent = `${newCount}개 선택됨 (끝까지!)`;
+            holdRingLabel.textContent = `${newCount}개 완료! 그대로 드래그하세요`;
             holdRingArc.style.stroke = '#facc15';
             playHoldStage(3);
           } else {
-            holdRingLabel.textContent = `${newCount}개 선택됨 (0.25초마다 +1개)`;
+            holdRingLabel.textContent = `${newCount}개 선택됨 (누르면 +1개)`;
             holdRingArc.style.stroke = '#34d399';
             playHoldStage(2);
           }
-          renderBoard();
-          renderRack();
+          syncSelectionVisuals();
         }
         interact.holdRaf = requestAnimationFrame(tick);
       }
@@ -1776,10 +2041,11 @@
       interact.isDragging = true;
       cancelHoldLoop();
 
-      if (lifted.active && lifted.tiles.some((t) => t.id === interact.anchorTile.id)) {
-        interact.selectedTiles = [...lifted.tiles];
+      if (interact.draggingExistingLifted) {
         lifted.active = false;
         lifted.tiles = [];
+        lifted.originType = null;
+        updateControls();
       }
 
       dragLayer.innerHTML = '';
@@ -1794,8 +2060,7 @@
       }
 
       positionDragLayer(interact.currX, interact.currY);
-      renderBoard();
-      renderRack();
+      syncSelectionVisuals();
     }
 
     function positionDragLayer(clientX, clientY) {
@@ -1803,31 +2068,48 @@
       const h = Math.max(36, state.cellH - 2);
       const totalW = interact.selectedTiles.length * (w + 2);
       dragLayer.style.left = `${clientX - totalW / 2}px`;
-      dragLayer.style.top = `${clientY - h / 2 - 8}px`;
+      dragLayer.style.top = `${clientY - h / 2 - interact.dragLiftY}px`;
+    }
+
+    function computeDropTargetAt(clientX, clientY) {
+      const dropX = clientX;
+      const dropY = clientY - interact.dragLiftY;
+      const rackTarget = findRackDropTarget(dropX, dropY);
+      if (rackTarget) return rackTarget;
+      if (isMyTurn()) return findMagneticBoardTarget(dropX, dropY, interact.selectedTiles);
+      return null;
     }
 
     function onGlobalPointerMove(e) {
-      if (!interact.active) return;
+      if (!interact.active || e.pointerId !== interact.pointerId) return;
+      e.preventDefault();
       interact.currX = e.clientX;
       interact.currY = e.clientY;
 
-      const dist = Math.hypot(e.clientX - interact.startX, e.clientY - interact.startY);
-      const isDraggingLifted = lifted.active && interact.anchorTile && lifted.tiles.some((t) => t.id === interact.anchorTile.id);
+      const distFromOrigin = Math.hypot(e.clientX - interact.dragOriginX, e.clientY - interact.dragOriginY);
+      const distFromStart = Math.hypot(e.clientX - interact.startX, e.clientY - interact.startY);
       if (!interact.isDragging) {
-        if (dist > (isDraggingLifted ? 4 : 6)) beginDragging();
-        else return;
+        const reachedMaxHold = interact.holdStage >= interact.fullGroupTiles.length && interact.fullGroupTiles.length >= 2;
+        const threshold = interact.draggingExistingLifted
+          ? 3
+          : reachedMaxHold
+            ? 5
+            : interact.holdStage >= 1
+              ? (interact.pointerType === 'touch' ? 14 : 11)
+              : 5;
+
+        if (distFromOrigin >= threshold || (reachedMaxHold && distFromStart >= 8)) {
+          beginDragging();
+        } else {
+          return;
+        }
       }
 
       positionDragLayer(e.clientX, e.clientY);
 
-      const boardTarget = isMyTurn() ? findMagneticBoardTarget(e.clientX, e.clientY, interact.selectedTiles) : null;
-      const prev = interact.snapTarget;
-      interact.snapTarget = boardTarget || findRackDropTarget(e.clientX, e.clientY);
-
-      if (JSON.stringify(prev) !== JSON.stringify(interact.snapTarget)) {
-        renderBoard();
-        highlightRackHover(interact.snapTarget);
-      }
+      interact.snapTarget = computeDropTargetAt(e.clientX, e.clientY);
+      updateMagnetGhost(interact.snapTarget);
+      highlightRackHover(interact.snapTarget);
     }
 
     function highlightRackHover(target) {
@@ -1838,75 +2120,109 @@
       }
     }
 
+    function flushPendingServerState() {
+      if (pendingServerState && !interact.active && !interact.isDragging) {
+        const queued = pendingServerState;
+        pendingServerState = null;
+        applyRoomState(queued);
+      }
+    }
+
     function onGlobalPointerUp(e) {
-      if (!interact.active) return;
+      if (!interact.active || e.pointerId !== interact.pointerId) return;
       window.removeEventListener('pointermove', onGlobalPointerMove);
       window.removeEventListener('pointerup', onGlobalPointerUp);
       window.removeEventListener('pointercancel', onGlobalPointerUp);
 
+      releaseActiveCapture();
       cancelHoldLoop();
       dragLayer.style.display = 'none';
+      magnetGhost.style.display = 'none';
       highlightRackHover(null);
 
+      const wasCancelled = e.type === 'pointercancel';
       const wasDragging = interact.isDragging;
+      const wasExistingLifted = interact.draggingExistingLifted;
       const heldStage = interact.holdStage;
       const selected = [...interact.selectedTiles];
       const originType = interact.originType;
-      const anchorTile = interact.anchorTile;
       const anchorPos = interact.anchorPos;
-      const snapTarget = interact.snapTarget;
+      const snapTarget = wasDragging
+        ? (computeDropTargetAt(e.clientX, e.clientY) || interact.snapTarget)
+        : null;
 
       interact.active = false;
+      interact.pointerId = null;
       interact.isDragging = false;
+      interact.draggingExistingLifted = false;
+      interact.holdStage = 0;
       interact.snapTarget = null;
+
+      if (wasCancelled) {
+        if (!wasDragging && heldStage >= 2 && selected.length >= 2) {
+          lifted.active = true;
+          lifted.originType = originType;
+          lifted.tiles = selected;
+          updateControls();
+        }
+        syncSelectionVisuals();
+        flushPendingServerState();
+        return;
+      }
+
+      let didMutate = false;
 
       if (wasDragging) {
         if (snapTarget && snapTarget.type === 'board-split') {
+          didMutate = true;
           applyAutoSplitOnBoard(selected, snapTarget);
         } else if (snapTarget && snapTarget.type === 'board') {
+          didMutate = true;
           moveTilesToBoard(selected, snapTarget.row, snapTarget.col, snapTarget.isMagnet);
         } else if (snapTarget && snapTarget.type === 'rack') {
+          didMutate = true;
           moveTilesToRack(selected, snapTarget.idx);
         } else {
-          renderBoard();
-          renderRack();
+          if (!isMyTurn() && originType === 'rack') {
+            const vpRect = boardViewport.getBoundingClientRect();
+            if (e.clientY < vpRect.bottom) {
+              showToast('내 차례에만 보드에 내려놓을 수 있습니다. (내 패 정렬은 가능)', 'info');
+            }
+          }
+          syncSelectionVisuals();
         }
+      } else if (wasExistingLifted) {
+        clearLifted();
       } else if (heldStage >= 2) {
         lifted.active = true;
         lifted.originType = originType;
         lifted.tiles = selected;
-        renderBoard();
-        renderRack();
+        syncSelectionVisuals();
         updateControls();
-      } else if (originType === 'rack' && (e.button === 0 || e.pointerType !== 'mouse')) {
-        if (lifted.active && anchorTile && lifted.tiles.some((t) => t.id === anchorTile.id)) {
-          clearLifted();
-        } else {
-          const madeSet = findMadeSetForRackTile(anchorPos.idx);
-          if (madeSet && madeSet.length >= 3) {
-            lifted.active = true;
-            lifted.originType = 'rack';
-            lifted.tiles = madeSet;
-            playHoldStage(3);
-            const setInfo = validateSet(madeSet);
-            showToast(`메이드 패 ${madeSet.length}개 (${setInfo.points}점) 선택됨! 보드로 드래그하세요.`, 'success');
-          }
-          renderBoard();
-          renderRack();
-          updateControls();
+      } else if (originType === 'rack') {
+        const madeSet = findMadeSetForRackTile(anchorPos.idx);
+        if (madeSet && madeSet.length >= 3) {
+          lifted.active = true;
+          lifted.originType = 'rack';
+          lifted.tiles = madeSet;
+          playHoldStage(3);
+          const setInfo = validateSet(madeSet);
+          showToast(`메이드 패 ${madeSet.length}개 (${setInfo.points}점) 선택됨! 보드로 드래그하세요.`, 'success');
         }
+        syncSelectionVisuals();
+        updateControls();
       } else {
-        renderBoard();
-        renderRack();
+        syncSelectionVisuals();
+      }
+
+      if (didMutate) {
+        pendingServerState = null;
+      } else {
+        flushPendingServerState();
       }
     }
 
-    function syncBoardMoveToServer() {
-      socket.emit('game:syncMove', { board: state.board, rack: state.myRack }, (res) => {
-        if (res && res.error) showToast(res.error, 'error');
-      });
-    }
-
+    // ==================== TILE MOVEMENT & SERVER SYNC ====================
     function closeGroupGapsOnBoard(removedSpots) {
       for (const { row, col } of removedSpots) {
         if (state.board[row][col]) continue;
@@ -1938,6 +2254,15 @@
         if (state.myRack[i] && tileIds.has(state.myRack[i].id)) state.myRack[i] = null;
       }
       if (removedBoardSpots.length === 1) closeGroupGapsOnBoard(removedBoardSpots);
+    }
+
+    function syncBoardMoveToServer() {
+      socket.emit('game:syncMove', { board: state.board, rack: state.myRack }, (res) => {
+        if (res && res.error) {
+          playErrorBuzz();
+          showToast(res.error, 'error');
+        }
+      });
     }
 
     function applyAutoSplitOnBoard(insertedTiles, splitTarget) {
@@ -2046,7 +2371,7 @@
         }
       }
       const fromBoard = tiles.some((t) => boardTileIds.has(t.id));
-      if (fromBoard && (!isMyTurn() || tiles.some((t) => !state.playedFromRackIds.has(t.id)))) {
+      if (fromBoard && tiles.some((t) => !state.playedFromRackIds.has(t.id))) {
         playErrorBuzz();
         showToast('바닥에 원래 있던 타일은 내 패로 가져올 수 없습니다.', 'error');
         renderAll();
@@ -2056,6 +2381,7 @@
       ensureRackCapacity();
       const ids = new Set(tiles.map((t) => t.id));
 
+      // Single-tile swap inside rack
       if (!fromBoard && tiles.length === 1 && targetIdx >= 0 && targetIdx < state.myRack.length && state.myRack[targetIdx] && state.myRack[targetIdx].id !== tiles[0].id) {
         const srcIdx = state.myRack.findIndex((t) => t && t.id === tiles[0].id);
         if (srcIdx !== -1) {
@@ -2104,7 +2430,9 @@
 
       playClack(false);
       if (fromBoard) {
-        renderAll();
+        computeBoardDimensions(false);
+        renderBoard();
+        renderRack();
         syncBoardMoveToServer();
       } else {
         renderRack();
@@ -2112,35 +2440,74 @@
       }
     }
 
-    socket.on('connect', () => {
-      connStatusText.textContent = '● 실시간 멀티플레이 서버 연결됨';
-      connStatusText.className = 'text-[11px] text-emerald-300 font-semibold mt-1';
-    });
+    // ==================== SOCKET EVENTS & LOBBY ====================
+    function renderWaitingRoom() {
+      waitingRoomCode.textContent = state.code || '----';
+      waitingCountText.textContent = `${state.players.length} / ${state.maxPlayers}명`;
+      waitingPlayersList.innerHTML = '';
 
-    socket.on('disconnect', () => {
-      connStatusText.textContent = '● 서버 재연결 중...';
-      connStatusText.className = 'text-[11px] text-amber-300 font-semibold mt-1';
-    });
+      state.players.forEach((p) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between px-3 py-2 rounded-xl bg-blue-950/75 border border-blue-700/60 text-xs';
+        row.innerHTML = `
+          <div class="flex items-center gap-2 font-bold text-white">
+            <span>${p.isAI ? '🤖' : '👤'}</span>
+            <span>${p.name}</span>
+            ${p.isHost ? '<span class="px-1.5 py-0.5 rounded bg-amber-400/25 text-amber-300 text-[10px]">방장</span>' : ''}
+          </div>
+          <span class="text-[11px] ${p.connected ? 'text-emerald-300' : 'text-rose-300'}">${p.connected ? '대기 중' : '연결 끊김'}</span>
+        `;
+        waitingPlayersList.appendChild(row);
+      });
 
-    socket.on('room:toast', ({ msg, tone }) => {
-      if (msg) showToast(msg, tone || 'info');
-    });
+      const amHost = state.hostSessionId === sessionId;
+      hostStartControls.classList.toggle('hidden', !amHost);
+      guestWaitingNote.classList.toggle('hidden', amHost);
+    }
 
-    socket.on('game:yourTurn', () => {
-      showMyTurnBanner();
-    });
+    function renderGameOver(data) {
+      document.getElementById('winnerTitle').textContent = `🏆 ${data.winnerName} 승리!`;
+      document.getElementById('winnerSubtitle').textContent = data.subtitle || '';
+      const scoreTable = document.getElementById('scoreTable');
+      scoreTable.innerHTML = '';
 
-    socket.on('game:timer', ({ timeLeft, currentPlayerIndex }) => {
-      state.timeLeft = timeLeft;
-      state.currentPlayerIndex = currentPlayerIndex;
-      updateTimerDisplay();
-      if (isMyTurn()) {
-        if (timeLeft <= 5 && timeLeft > 0) playTick(true);
-        else if (timeLeft <= 10 && timeLeft > 5) playTick(false);
-      }
-    });
+      (data.rows || []).forEach((r) => {
+        const adjScore = typeof r.adjustedScore === 'number'
+          ? r.adjustedScore
+          : (r.isWinner ? data.totalLoserPenalty : -r.penalty);
+        const rawSumText = typeof r.rawSum === 'number' ? ` · 패 합계 ${r.rawSum}점` : '';
+        const adjustNote = !r.isWinner && data.minSum > 0
+          ? ` (-${r.rawSum}+${data.minSum})`
+          : '';
+        const scoreLabel = r.isWinner
+          ? `+${adjScore}점`
+          : (adjScore === 0 ? '0점' : `${adjScore}점`);
+        const scoreColor = r.isWinner
+          ? 'text-emerald-300'
+          : (adjScore === 0 ? 'text-slate-300' : 'text-rose-300');
 
-    socket.on('room:state', (payload) => {
+        const row = document.createElement('div');
+        row.className = `flex items-center justify-between px-3.5 py-2.5 rounded-xl border ${r.isWinner ? 'bg-amber-400/20 border-amber-300' : 'bg-blue-950/80 border-blue-800'}`;
+        row.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span>${r.isAI ? '🤖' : '👤'}</span>
+            <div>
+              <div class="font-extrabold text-sm text-white">${r.name} ${r.isWinner ? '👑' : ''}</div>
+              <div class="text-[11px] text-blue-200/75">남은 패 ${r.leftCount}장${rawSumText}${adjustNote}</div>
+            </div>
+          </div>
+          <div class="font-black text-base ${scoreColor}">${scoreLabel}</div>
+        `;
+        scoreTable.appendChild(row);
+      });
+
+      const amHost = state.hostSessionId === sessionId;
+      document.getElementById('btnPlayAgain').classList.toggle('hidden', !amHost);
+      gameOverModal.classList.remove('hidden');
+      playSuccessChord();
+    }
+
+    function applyRoomState(payload) {
       state.code = payload.code;
       state.phase = payload.phase;
       state.maxPlayers = payload.maxPlayers;
@@ -2150,15 +2517,14 @@
       state.currentPlayerIndex = payload.currentPlayerIndex;
       state.poolCount = payload.poolCount;
       state.timeLeft = payload.timeLeft;
+      state.finalRoundTurnsLeft = payload.finalRoundTurnsLeft ?? null;
+      state.finalRoundTriggerName = payload.finalRoundTriggerName || null;
       state.board = payload.board || Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
       state.playedFromRackIds = new Set(payload.playedFromRackIds || []);
       state.recentAITileIds = new Set(payload.recentAITileIds || []);
       state.hasBoardChanged = Boolean(payload.hasBoardChanged);
       state.evalState = payload.evalState || null;
-
-      if (!interact.isDragging) {
-        state.myRack = Array.isArray(payload.myRack) ? payload.myRack : Array(20).fill(null);
-      }
+      state.myRack = Array.isArray(payload.myRack) ? payload.myRack : Array(20).fill(null);
 
       if (state.phase === 'waiting') {
         lobbyModal.classList.remove('hidden');
@@ -2175,139 +2541,117 @@
         renderAll();
         if (payload.gameOverData) renderGameOver(payload.gameOverData);
       }
+    }
+
+    socket.on('room:state', (payload) => {
+      if (interact.active || interact.isDragging) {
+        pendingServerState = payload;
+        return;
+      }
+      applyRoomState(payload);
     });
 
-    function renderWaitingRoom() {
-      waitingRoomCode.textContent = state.code || '----';
-      waitingCountText.textContent = `${state.players.length} / ${state.maxPlayers}명`;
-      waitingPlayersList.innerHTML = '';
+    socket.on('game:timer', ({ timeLeft, currentPlayerIndex }) => {
+      state.timeLeft = timeLeft;
+      state.currentPlayerIndex = currentPlayerIndex;
+      updateTimerDisplay();
+      if (isMyTurn()) {
+        if (timeLeft <= 5 && timeLeft > 0) playTick(true);
+        else if (timeLeft <= 10 && timeLeft > 5) playTick(false);
+      }
+    });
 
-      state.players.forEach((p) => {
-        const row = document.createElement('div');
-        row.className = 'flex items-center justify-between px-3 py-2 rounded-xl bg-blue-950/75 border border-blue-700/60';
-        row.innerHTML = `
-          <div class="flex items-center gap-2">
-            <span>${p.isHost ? '👑' : '👤'}</span>
-            <span class="font-bold text-sm text-white">${p.name}</span>
-          </div>
-          <span class="text-[11px] font-bold ${p.isHost ? 'text-amber-300' : 'text-emerald-300'}">${p.isHost ? '방장' : '준비됨'}</span>
-        `;
-        waitingPlayersList.appendChild(row);
-      });
+    socket.on('game:yourTurn', () => {
+      showMyTurnBanner();
+    });
 
-      const isHost = state.hostSessionId === sessionId;
-      hostStartControls.classList.toggle('hidden', !isHost);
-      guestWaitNotice.classList.toggle('hidden', isHost);
-      document.getElementById('btnStartHumans').disabled = state.players.length < 2;
-      document.getElementById('btnStartHumans').classList.toggle('opacity-50', state.players.length < 2);
-    }
+    socket.on('room:toast', ({ msg, tone }) => {
+      if (msg) showToast(msg, tone || 'info');
+    });
 
-    function renderGameOver(data) {
-      document.getElementById('winnerTitle').textContent = `🏆 ${data.winnerName} 승리!`;
-      document.getElementById('winnerSubtitle').textContent = data.subtitle || '';
-      const scoreTable = document.getElementById('scoreTable');
-      scoreTable.innerHTML = '';
-
-      (data.rows || []).forEach((r) => {
-        const row = document.createElement('div');
-        row.className = `flex items-center justify-between px-3.5 py-2.5 rounded-xl border ${r.isWinner ? 'bg-amber-400/20 border-amber-300' : 'bg-blue-950/80 border-blue-800'}`;
-        row.innerHTML = `
-          <div class="flex items-center gap-2">
-            <span>${r.isAI ? '🤖' : '👤'}</span>
-            <div>
-              <div class="font-extrabold text-sm text-white">${r.name} ${r.isWinner ? '👑' : ''}</div>
-              <div class="text-[11px] text-blue-200/75">남은 패 ${r.leftCount}장</div>
-            </div>
-          </div>
-          <div class="font-black text-base ${r.isWinner ? 'text-emerald-300' : 'text-rose-300'}">${r.isWinner ? `+${data.totalLoserPenalty}점` : `-${r.penalty}점`}</div>
-        `;
-        scoreTable.appendChild(row);
-      });
-
-      const isHost = state.hostSessionId === sessionId;
-      document.getElementById('btnPlayAgain').classList.toggle('hidden', !isHost);
-      gameOverModal.classList.remove('hidden');
-      playSuccessChord();
-    }
-
-    function returnToLobbyEntry() {
-      clearLifted();
-      socket.emit('room:leave');
-      state.code = null;
-      state.phase = 'lobby';
-      gameOverModal.classList.add('hidden');
-      lobbyModal.classList.remove('hidden');
-      lobbyWaitingView.classList.add('hidden');
-      lobbyEntryView.classList.remove('hidden');
-      roomCodeBadgeWrap.classList.add('hidden');
-    }
-
+    // ==================== UI EVENT WIRING ====================
     document.querySelectorAll('.count-opt').forEach((btn) => {
       btn.addEventListener('click', () => {
         selectedMaxPlayers = parseInt(btn.dataset.count, 10);
         document.querySelectorAll('.count-opt').forEach((b) => {
           const active = parseInt(b.dataset.count, 10) === selectedMaxPlayers;
           b.className = active
-            ? 'count-opt px-2.5 py-1 rounded-lg font-extrabold text-xs border bg-amber-400 border-amber-200 text-slate-950'
-            : 'count-opt px-2.5 py-1 rounded-lg font-extrabold text-xs border bg-blue-900 border-blue-700 text-blue-200';
+            ? 'count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-amber-400 border-amber-200 text-slate-950 shadow-lg'
+            : 'count-opt py-2 rounded-xl font-extrabold text-sm border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900';
         });
       });
     });
 
     document.getElementById('btnCreateRoom').addEventListener('click', () => {
       ensureAudio();
-      const name = getSavedName();
+      const name = saveNickname();
       socket.emit('room:create', { name, maxPlayers: selectedMaxPlayers, sessionId }, (res) => {
-        if (res && res.error) showToast(res.error, 'error');
+        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
       });
     });
 
     document.getElementById('btnJoinRoom').addEventListener('click', () => {
       ensureAudio();
-      const name = getSavedName();
-      const code = (joinCodeInput.value || '').replace(/\D/g, '').slice(0, 4);
+      const name = saveNickname();
+      const code = (inputRoomCode.value || '').replace(/\D/g, '').slice(0, 4);
       if (code.length !== 4) {
-        showToast('숫자 4자리 방 코드를 입력하세요.', 'error');
+        playErrorBuzz();
+        showToast('숫자 4자리 방 코드를 입력해 주세요.', 'error');
         return;
       }
       socket.emit('room:join', { code, name, sessionId }, (res) => {
-        if (res && res.error) showToast(res.error, 'error');
+        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
       });
     });
 
-    joinCodeInput.addEventListener('input', () => {
-      joinCodeInput.value = joinCodeInput.value.replace(/\D/g, '').slice(0, 4);
+    inputRoomCode.addEventListener('input', () => {
+      inputRoomCode.value = inputRoomCode.value.replace(/\D/g, '').slice(0, 4);
     });
 
-    document.getElementById('btnCopyCode').addEventListener('click', () => {
-      if (state.code) copyTextToClipboard(state.code);
-    });
-    roomCodeBadgeWrap.addEventListener('click', () => {
-      if (state.code) copyTextToClipboard(state.code);
+    document.getElementById('btnCopyRoomCode').addEventListener('click', () => {
+      if (!state.code) return;
+      const ta = document.createElement('textarea');
+      ta.value = state.code;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (_e) {}
+      document.body.removeChild(ta);
+      showToast(`방 코드 ${state.code} 복사 완료!`, 'success');
     });
 
-    document.getElementById('btnStartHumans').addEventListener('click', () => {
+    document.getElementById('btnStartMultiplayer').addEventListener('click', () => {
       ensureAudio();
       socket.emit('room:start', { fillWithAI: false }, (res) => {
-        if (res && res.error) showToast(res.error, 'error');
+        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
       });
     });
 
     document.getElementById('btnStartWithAI').addEventListener('click', () => {
       ensureAudio();
       socket.emit('room:start', { fillWithAI: true }, (res) => {
-        if (res && res.error) showToast(res.error, 'error');
+        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
       });
     });
 
-    document.getElementById('btnLeaveWaiting').addEventListener('click', returnToLobbyEntry);
-    document.getElementById('btnLeaveRoom').addEventListener('click', returnToLobbyEntry);
-    document.getElementById('btnBackToLobby').addEventListener('click', returnToLobbyEntry);
+    function leaveRoomToLobby() {
+      socket.emit('room:leave');
+      state.code = null;
+      state.phase = 'lobby';
+      clearLifted();
+      gameOverModal.classList.add('hidden');
+      lobbyModal.classList.remove('hidden');
+      lobbyEntryView.classList.remove('hidden');
+      lobbyWaitingView.classList.add('hidden');
+    }
+
+    document.getElementById('btnLeaveWaiting').addEventListener('click', leaveRoomToLobby);
+    document.getElementById('btnLobby').addEventListener('click', leaveRoomToLobby);
+    document.getElementById('btnBackToLobby').addEventListener('click', leaveRoomToLobby);
 
     document.getElementById('btnPlayAgain').addEventListener('click', () => {
       ensureAudio();
       socket.emit('game:playAgain', {}, (res) => {
-        if (res && res.error) showToast(res.error, 'error');
+        if (res && res.error) { playErrorBuzz(); showToast(res.error, 'error'); }
       });
     });
 
@@ -2332,7 +2676,7 @@
           showToast(res.error, 'error');
         } else if (res && res.action === 'confirm') {
           playSuccessChord();
-        } else {
+        } else if (res && res.action === 'draw') {
           playClack(false);
         }
       });
@@ -2343,6 +2687,18 @@
         clearLifted();
         helpModal.classList.add('hidden');
       }
+    });
+
+    window.addEventListener('contextmenu', (e) => {
+      if (interact.active) e.preventDefault();
+    });
+
+    document.addEventListener('selectstart', (e) => {
+      if (interact.active) e.preventDefault();
+    });
+
+    window.addEventListener('blur', () => {
+      if (interact.active) forceResetInteraction();
     });
 
     window.addEventListener('resize', () => {
