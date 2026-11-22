@@ -1260,7 +1260,243 @@
     }
 
     function getRackRowContiguousItems(rackIdx) {
-// ... existing code ... -->
+      if (!state.myRack[rackIdx]) return [];
+      const rowSize = Math.floor(state.myRack.length / 2);
+      const rowStart = rackIdx < rowSize ? 0 : rowSize;
+      const rowEnd = rowStart + rowSize - 1;
+      let cStart = rackIdx;
+      while (cStart > rowStart && state.myRack[cStart - 1]) cStart--;
+      let cEnd = rackIdx;
+      while (cEnd < rowEnd && state.myRack[cEnd + 1]) cEnd++;
+      const res = [];
+      for (let i = cStart; i <= cEnd; i++) res.push({ tile: state.myRack[i], idx: i });
+      return res;
+    }
+
+    function getCompatibleForwardChain(items, startIdx) {
+      if (!items || startIdx < 0 || startIdx >= items.length) return [];
+      const first = items[startIdx];
+      if (!first || !first.tile) return [];
+
+      if (first.tile.isJoker) {
+        if (startIdx + 1 >= items.length) return [first];
+        const nextChain = getCompatibleForwardChain(items, startIdx + 1);
+        if (nextChain.length >= 2) {
+          const combined = [first.tile, ...nextChain.map((x) => x.tile)];
+          if (validateSet(combined).valid) return [first, ...nextChain];
+        }
+        return [first];
+      }
+
+      const runChain = [first];
+      let expectedNum = first.tile.num + 1;
+      for (let i = startIdx + 1; i < items.length; i++) {
+        const cur = items[i];
+        if (!cur || !cur.tile) break;
+        if (!cur.tile.isJoker && cur.tile.color === first.tile.color && cur.tile.num === expectedNum) {
+          runChain.push(cur);
+          expectedNum++;
+        } else if (
+          cur.tile.isJoker &&
+          expectedNum <= 13 &&
+          (
+            runChain.length >= 2 ||
+            (
+              i + 1 < items.length &&
+              items[i + 1]?.tile &&
+              !items[i + 1].tile.isJoker &&
+              items[i + 1].tile.color === first.tile.color &&
+              items[i + 1].tile.num === expectedNum + 1
+            )
+          )
+        ) {
+          runChain.push(cur);
+          expectedNum++;
+        } else {
+          break;
+        }
+      }
+
+      const groupChain = [first];
+      const usedColors = new Set([first.tile.color]);
+      for (let i = startIdx + 1; i < items.length && groupChain.length < 4; i++) {
+        const cur = items[i];
+        if (!cur || !cur.tile) break;
+        if (!cur.tile.isJoker && cur.tile.num === first.tile.num && !usedColors.has(cur.tile.color)) {
+          usedColors.add(cur.tile.color);
+          groupChain.push(cur);
+        } else if (cur.tile.isJoker && groupChain.length >= 2) {
+          groupChain.push(cur);
+        } else {
+          break;
+        }
+      }
+
+      return groupChain.length > runChain.length ? groupChain : runChain;
+    }
+
+    function findMadeSetForRackTile(rackIdx) {
+      const contig = getRackRowContiguousItems(rackIdx);
+      if (contig.length < 3) return null;
+      const anchorPos = contig.findIndex((x) => x.idx === rackIdx);
+      if (anchorPos === -1) return null;
+
+      let best = null;
+      for (let s = 0; s <= anchorPos; s++) {
+        for (let e = contig.length - 1; e >= anchorPos; e--) {
+          if (e - s + 1 < 3) continue;
+          const slice = contig.slice(s, e + 1).map((x) => x.tile);
+          const check = validateSet(slice);
+          if (check.valid) {
+            if (!best || slice.length > best.tiles.length || (slice.length === best.tiles.length && check.points > best.points)) {
+              best = { tiles: slice, points: check.points };
+            }
+          }
+        }
+      }
+      return best ? best.tiles : null;
+    }
+
+    // ==================== BOARD PLACEMENT, GROUP INSERT & AUTO-SPACE ====================
+    function isAreaFreeOn(board, row, col, len, ignoreIds = new Set()) {
+      if (row < 0 || row >= GRID_ROWS || col < 0 || col + len > GRID_COLS) return false;
+      for (let i = 0; i < len; i++) {
+        const occ = board[row][col + i];
+        if (occ && !ignoreIds.has(occ.id)) return false;
+      }
+      return true;
+    }
+
+    function isAreaFreeOnBoard(row, col, len, ignoreIds = new Set()) {
+      return isAreaFreeOn(state.board, row, col, len, ignoreIds);
+    }
+
+    function findAutoSplitForGroup(groupTiles, insertedTiles) {
+      if (!groupTiles || groupTiles.length < 4 || !insertedTiles || insertedTiles.length === 0) return null;
+      for (let k = 1; k < groupTiles.length; k++) {
+        const leftPart = groupTiles.slice(0, k);
+        const rightPart = groupTiles.slice(k);
+        const setA1 = [...leftPart, ...insertedTiles];
+        if (validateSet(setA1).valid && validateSet(rightPart).valid) return { setA: setA1, setB: rightPart };
+        const setB2 = [...insertedTiles, ...rightPart];
+        if (validateSet(leftPart).valid && validateSet(setB2).valid) return { setA: leftPart, setB: setB2 };
+      }
+      return null;
+    }
+
+    function findGroupInsertForGroup(groupTiles, insertedTiles, insertOffset) {
+      if (!groupTiles || groupTiles.length !== 3 || !insertedTiles || insertedTiles.length !== 1) return null;
+      const baseCheck = validateSet(groupTiles);
+      if (!baseCheck.valid || baseCheck.type !== 'group') return null;
+      const idx = Math.max(0, Math.min(groupTiles.length, insertOffset));
+      const newTiles = [...groupTiles.slice(0, idx), insertedTiles[0], ...groupTiles.slice(idx)];
+      const nextCheck = validateSet(newTiles);
+      if (nextCheck.valid && nextCheck.type === 'group') {
+        return { newTiles };
+      }
+      return null;
+    }
+
+    function findNearestEmptySpotOn(board, prefRow, prefCol, len, ignoreIds = new Set()) {
+      let bestWithGap = null;
+      let bestGapDist = Infinity;
+      let bestAny = null;
+      let bestAnyDist = Infinity;
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c <= GRID_COLS - len; c++) {
+          if (!isAreaFreeOn(board, r, c, len, ignoreIds)) continue;
+          const dist = Math.hypot(c - prefCol, (r - prefRow) * 2.2);
+          const leftTile = c > 0 ? board[r][c - 1] : null;
+          const rightTile = c + len < GRID_COLS ? board[r][c + len] : null;
+          const leftClear = !leftTile || ignoreIds.has(leftTile.id);
+          const rightClear = !rightTile || ignoreIds.has(rightTile.id);
+          if (leftClear && rightClear && dist < bestGapDist) {
+            bestGapDist = dist;
+            bestWithGap = { row: r, col: c };
+          }
+          if (dist < bestAnyDist) {
+            bestAnyDist = dist;
+            bestAny = { row: r, col: c };
+          }
+        }
+      }
+      return bestWithGap || bestAny;
+    }
+
+    function findNearestEmptySpot(prefRow, prefCol, len, ignoreIds = new Set()) {
+      return findNearestEmptySpotOn(state.board, prefRow, prefCol, len, ignoreIds);
+    }
+
+    function compactBoardToMakeSpace(board, neededLen, ignoreIds = new Set()) {
+      const groups = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        let c = 0;
+        while (c < GRID_COLS) {
+          const t = board[r][c];
+          if (t && !ignoreIds.has(t.id)) {
+            const tiles = [];
+            while (c < GRID_COLS && board[r][c] && !ignoreIds.has(board[r][c].id)) {
+              tiles.push({ ...board[r][c] });
+              c++;
+            }
+            groups.push(tiles);
+          } else {
+            c++;
+          }
+        }
+      }
+
+      const nextBoard = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
+      let curR = 0;
+      let curC = 0;
+      for (const g of groups) {
+        if (curC > 0 && curC + g.length > GRID_COLS) {
+          curR++;
+          curC = 0;
+        }
+        if (curR >= GRID_ROWS || curC + g.length > GRID_COLS) return null;
+        for (let i = 0; i < g.length; i++) nextBoard[curR][curC + i] = g[i];
+        curC += g.length + 1;
+        if (curC >= GRID_COLS) {
+          curR++;
+          curC = 0;
+        }
+      }
+
+      const spot = findNearestEmptySpotOn(nextBoard, curR, curC, neededLen);
+      if (!spot) return null;
+      return { board: nextBoard, spot };
+    }
+
+    function planPushBlockersAround(row, startCol, tilesToPlace, removeIds = new Set(), keepIds = new Set()) {
+      const len = tilesToPlace.length;
+      if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
+
+      const blockers = [];
+      let c = 0;
+      while (c < GRID_COLS) {
+        const t = state.board[row][c];
+        if (t && !removeIds.has(t.id)) {
+          const gStart = c;
+          const gTiles = [];
+          while (c < GRID_COLS && state.board[row][c] && !removeIds.has(state.board[row][c].id)) {
+            gTiles.push(state.board[row][c]);
+            c++;
+          }
+          const gEnd = c - 1;
+          const isKept = gTiles.some((x) => keepIds.has(x.id));
+          if (!isKept && gEnd >= startCol - 1 && gStart <= startCol + len) {
+            blockers.push({ row, startCol: gStart, endCol: gEnd, tiles: gTiles });
+          }
+        } else {
+          c++;
+        }
+      }
+
+      if (blockers.length === 0) return null;
+
+      const simBoard = state.board.map((rowArr) => rowArr.map((t) => (t ? { ...t } : null)));
+
       // 이동 중인 패(removeIds)만 시뮬레이션 보드에서 제거 (keepIds는 그대로 유지!)
       const removedSimSpots = [];
       for (let r = 0; r < GRID_ROWS; r++) {
@@ -1551,6 +1787,11 @@
               isMagnet: false,
               isValidMerge: false,
             };
+          }
+        }
+        return null;
+      }
+
       // 2. 자유 배치 (랙 바로 위 공간 포함, 공간 부족 시 자동 밀기/정리, 상관없는 패 옆은 차단)
       const visMinCol = state.viewColStart;
       const visMaxCol = Math.max(visMinCol, Math.min(GRID_COLS - len, state.viewColStart + state.viewCols - len));
