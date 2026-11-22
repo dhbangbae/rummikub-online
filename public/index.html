@@ -459,7 +459,7 @@
 
     <!-- CENTER COLUMN: Board + Wooden Rack -->
     <div class="flex-1 min-w-0 flex flex-col items-center justify-between gap-1 min-h-0">
-      <main id="boardViewport" class="flex-1 w-full min-h-0 relative flex items-center justify-center overflow-hidden">
+      <main id="boardViewport" class="flex-1 w-full min-h-0 relative flex items-end justify-center pb-1 overflow-hidden">
         <div id="boardGrid" class="relative rounded-xl"></div>
         <div id="magnetGhost" class="magnet-ghost" style="display:none;"></div>
         <div id="remoteDragGhost" class="remote-drag-ghost"></div>
@@ -878,6 +878,8 @@
       viewRows: 5,
       cellW: 48,
       cellH: 64,
+      rowGap: 8,
+      rowStep: 72,
     };
 
     const interact = {
@@ -1597,7 +1599,7 @@
       const totalGroupW = len * state.cellW;
       const groupLeftX = clientX - totalGroupW / 2;
       const fCol = state.viewColStart + (groupLeftX - rect.left) / state.cellW;
-      const fRow = state.viewRowStart + (clientY - rect.top - state.cellH / 2) / state.cellH;
+      const fRow = state.viewRowStart + (clientY - rect.top - state.cellH / 2) / state.rowStep;
 
       function checkAdjacencyCompatible(r, col) {
         const testRow = state.board[r].map((t) => (t && !ignoreIds.has(t.id) ? t : null));
@@ -1617,10 +1619,13 @@
       }
 
       // 0. 기존 패 위 호버 -> 같은 숫자 3장 끼워넣기 & 긴 런 자동 분리
-      const hoverRow = state.viewRowStart + Math.floor((clientY - rect.top) / state.cellH);
+      const hoverRowOffset = clientY - rect.top;
+      const hoverRowIdx = Math.floor(hoverRowOffset / state.rowStep);
+      const inTileVerticalBand = hoverRowOffset >= 0 && (hoverRowOffset - hoverRowIdx * state.rowStep) <= state.cellH;
+      const hoverRow = state.viewRowStart + hoverRowIdx;
       const hoverCol = state.viewColStart + Math.floor((clientX - rect.left) / state.cellW);
       let hoveringOccupied = false;
-      if (hoverRow >= 0 && hoverRow < GRID_ROWS && hoverCol >= 0 && hoverCol < GRID_COLS) {
+      if (inTileVerticalBand && hoverRow >= 0 && hoverRow < GRID_ROWS && hoverCol >= 0 && hoverCol < GRID_COLS) {
         const under = state.board[hoverRow][hoverCol];
         if (under && !ignoreIds.has(under.id)) {
           hoveringOccupied = true;
@@ -1933,7 +1938,9 @@
       const rect = boardViewport.getBoundingClientRect();
       const isNarrow = window.innerWidth < 640;
       const availW = Math.max(200, rect.width - (isNarrow ? 6 : 16));
-      const availH = Math.max(140, rect.height - (isNarrow ? 6 : 14));
+      const availH = Math.max(140, rect.height - (isNarrow ? 6 : 12));
+      const aspect = 1.38;
+      const gapRatio = 0.14;
 
       if (!lockScale) {
         let minC = GRID_COLS, maxC = -1, minR = GRID_ROWS, maxR = -1;
@@ -1952,18 +1959,22 @@
           }
         }
 
-        if (tileCount === 0) {
-          state.viewCols = isNarrow ? 12 : 14;
-          state.viewRows = 5;
-          state.viewColStart = Math.floor((GRID_COLS - state.viewCols) / 2);
-          state.viewRowStart = Math.floor((GRID_ROWS - state.viewRows) / 2);
-        } else {
-          const padCol = 2;
-          const padRow = 1;
-          const spanCols = Math.max(isNarrow ? 12 : 14, (maxC - minC + 1) + padCol * 2);
-          const spanRows = Math.max(5, (maxR - minR + 1) + padRow * 2);
+        const baseCols = isNarrow ? 12 : 14;
+        const spanCols = tileCount === 0 ? baseCols : Math.max(baseCols, (maxC - minC + 1) + 4);
+        state.viewCols = Math.min(GRID_COLS, spanCols);
 
-          state.viewCols = Math.min(GRID_COLS, spanCols);
+        // 현재 가로 폭 기준 타일 크기로 세로 공간(랙 바로 위까지)을 채울 수 있는 행 수 계산
+        const estCellW = Math.max(12, Math.min(58, Math.floor(availW / state.viewCols)));
+        const estCellH = Math.round(estCellW * aspect);
+        const estGap = Math.max(6, Math.round(estCellH * gapRatio));
+        const fitRows = Math.floor((availH + estGap) / (estCellH + estGap));
+
+        if (tileCount === 0) {
+          state.viewRows = Math.min(GRID_ROWS, Math.max(5, fitRows));
+          state.viewColStart = Math.floor((GRID_COLS - state.viewCols) / 2);
+          state.viewRowStart = Math.max(0, GRID_ROWS - state.viewRows);
+        } else {
+          const spanRows = Math.max(5, fitRows, (maxR - minR + 1) + 2);
           state.viewRows = Math.min(GRID_ROWS, spanRows);
 
           const centerC = (minC + maxC) / 2;
@@ -1983,18 +1994,29 @@
         }
       }
 
-      const aspect = 1.38;
       const maxCellW = Math.floor(availW / state.viewCols);
-      const maxCellH = Math.floor(availH / state.viewRows);
+      const effectiveRows = state.viewRows + Math.max(0, state.viewRows - 1) * gapRatio;
+      const maxCellH = Math.floor(availH / effectiveRows);
       let cellW = Math.min(maxCellW, Math.floor(maxCellH / aspect));
       cellW = Math.max(12, Math.min(58, cellW));
-      const cellH = Math.max(17, Math.min(maxCellH, Math.round(cellW * aspect)));
+      let cellH = Math.max(17, Math.min(maxCellH, Math.round(cellW * aspect)));
+      let rowGap = Math.max(6, Math.round(cellH * gapRatio));
+
+      // 총 높이가 뷰포트를 넘지 않도록 미세 보정
+      while (state.viewRows * cellH + Math.max(0, state.viewRows - 1) * rowGap > availH && rowGap > 4) {
+        rowGap--;
+      }
+      while (state.viewRows * cellH + Math.max(0, state.viewRows - 1) * rowGap > availH && cellH > 17) {
+        cellH--;
+      }
 
       state.cellW = cellW;
       state.cellH = cellH;
+      state.rowGap = rowGap;
+      state.rowStep = cellH + rowGap;
 
       boardGrid.style.width = `${cellW * state.viewCols}px`;
-      boardGrid.style.height = `${cellH * state.viewRows}px`;
+      boardGrid.style.height = `${state.viewRows * cellH + Math.max(0, state.viewRows - 1) * rowGap}px`;
     }
 
     // ==================== RENDERING ====================
@@ -2140,7 +2162,7 @@
         const frame = document.createElement('div');
         frame.className = `group-frame ${g.valid ? 'valid' : 'invalid'}`;
         frame.style.left = `${(visStart - state.viewColStart) * state.cellW - 2}px`;
-        frame.style.top = `${(g.row - state.viewRowStart) * state.cellH - 2}px`;
+        frame.style.top = `${(g.row - state.viewRowStart) * state.rowStep - 2}px`;
         frame.style.width = `${(visEnd - visStart + 1) * state.cellW + 4}px`;
         frame.style.height = `${state.cellH + 4}px`;
         boardGrid.appendChild(frame);
@@ -2162,7 +2184,7 @@
           const el = buildTileElement(tile, tileW, tileH, extra);
           el.style.position = 'absolute';
           el.style.left = `${(c - state.viewColStart) * state.cellW + 1}px`;
-          el.style.top = `${(r - state.viewRowStart) * state.cellH + 1}px`;
+          el.style.top = `${(r - state.viewRowStart) * state.rowStep + 1}px`;
           el.style.zIndex = '10';
 
           el.addEventListener('pointerdown', (e) => onTilePointerDown(e, 'board', tile, { row: r, col: c }, el));
@@ -2277,21 +2299,35 @@
       if (st.type === 'board-group-insert') {
         magnetGhost.className = 'magnet-ghost snapped-valid flex items-center justify-center';
         magnetGhost.style.left = `${offsetX + (st.groupStart - state.viewColStart) * state.cellW + 1}px`;
-        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.rowStep + 1}px`;
         magnetGhost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
         magnetGhost.style.height = `${state.cellH - 2}px`;
         magnetGhost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow whitespace-nowrap">+ 끼워넣기</span>';
       } else if (st.type === 'board-split') {
         magnetGhost.className = 'magnet-ghost snapped-valid flex items-center justify-center';
         magnetGhost.style.left = `${offsetX + (st.groupStart - state.viewColStart) * state.cellW + 1}px`;
-        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.rowStep + 1}px`;
         magnetGhost.style.width = `${(st.groupEnd - st.groupStart + 1) * state.cellW - 2}px`;
         magnetGhost.style.height = `${state.cellH - 2}px`;
         magnetGhost.innerHTML = '<span class="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[10px] font-black shadow">✂ 자동 분리</span>';
       } else if (st.type === 'board-compact') {
         magnetGhost.className = 'magnet-ghost snapped-magnet flex items-center justify-center';
         magnetGhost.style.left = `${offsetX + (st.col - state.viewColStart) * state.cellW + 1}px`;
-        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.cellH + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.rowStep + 1}px`;
+        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-sky-950/90 text-sky-200 text-[9px] font-black shadow whitespace-nowrap">✨ 자리 자동 확보</span>';
+      } else if (st.type === 'board-blocked') {
+        magnetGhost.className = 'magnet-ghost snapped-blocked flex items-center justify-center';
+        magnetGhost.style.left = `${offsetX + (st.col - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.rowStep + 1}px`;
+        magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
+        magnetGhost.style.height = `${state.cellH - 2}px`;
+        magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-rose-950/90 text-rose-100 text-[9px] font-black shadow whitespace-nowrap">✕ 붙이기 불가</span>';
+      } else {
+        magnetGhost.className = 'magnet-ghost ' + (st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free') + ((st.pushMoves || st.shiftTargetRight || st.autoMadeSpace) ? ' flex items-center justify-center' : '');
+        magnetGhost.style.left = `${offsetX + (st.col - state.viewColStart) * state.cellW + 1}px`;
+        magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.rowStep + 1}px`;
         magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
         magnetGhost.style.height = `${state.cellH - 2}px`;
         magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-sky-950/90 text-sky-200 text-[9px] font-black shadow whitespace-nowrap">✨ 자리 자동 확보</span>';
@@ -2333,7 +2369,7 @@
       const tileH = Math.max(17, state.cellH - 2);
       remoteDragGhost.style.display = 'flex';
       remoteDragGhost.style.left = `${offsetX + (payload.col - state.viewColStart) * state.cellW}px`;
-      remoteDragGhost.style.top = `${offsetY + (payload.row - state.viewRowStart) * state.cellH - 18}px`;
+      remoteDragGhost.style.top = `${offsetY + (payload.row - state.viewRowStart) * state.rowStep - 18}px`;
 
       remoteDragGhost.innerHTML = '';
       const badge = document.createElement('div');
