@@ -422,11 +422,6 @@
       box-shadow: 0 0 18px rgba(74, 222, 128, 0.7), 0 4px 14px rgba(2, 10, 30, 0.7);
     }
 
-    .avatar-ring.spectate-selected {
-      background: linear-gradient(135deg, #38bdf8 0%, #bae6fd 50%, #0284c7 100%);
-      box-shadow: 0 0 20px rgba(56, 189, 248, 0.9), 0 4px 14px rgba(2, 10, 30, 0.75);
-    }
-
     #holdRingContainer {
       position: fixed;
       pointer-events: none;
@@ -646,8 +641,8 @@
   <!-- MAIN TABLE AREA -->
   <div class="relative z-10 flex-1 flex items-stretch min-h-0 w-full px-1 sm:px-2 pb-1.5 gap-1 sm:gap-2">
 
-    <!-- LEFT SIDEBAR: Player Avatars & 40s Circular Timer (Top-to-bottom Turn Order) -->
-    <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-20 sm:w-[114px] z-20"></aside>
+    <!-- LEFT SIDEBAR: Player Avatars & 40s Circular Timer -->
+    <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-20 sm:w-[110px] z-20"></aside>
 
     <!-- CENTER COLUMN: Board + Wooden Rack / Spectator Bar -->
     <div class="flex-1 min-w-0 flex flex-col items-center justify-between gap-1 min-h-0">
@@ -677,20 +672,17 @@
       </main>
 
       <!-- Bottom Natural Wooden 2-Tier Rack / Spectator Bar -->
-      <section id="rackWrap" class="w-full flex flex-col items-center justify-center shrink-0 pt-1 gap-1">
+      <section id="rackWrap" class="w-full flex flex-col items-center justify-center shrink-0 pt-0.5 gap-1">
+        <div id="spectatorBottomBar" class="hidden items-center justify-center gap-1.5 sm:gap-2 px-3 py-1 rounded-full bg-slate-950/85 border border-sky-400/60 text-sky-100 text-[11px] sm:text-xs font-bold shadow-xl backdrop-blur-md flex-wrap max-w-full">
+          <span class="px-2 py-0.5 rounded-full bg-sky-500/25 border border-sky-400/60 text-sky-300 text-[10px] font-black shrink-0">👀 관전 패 보기</span>
+          <span id="spectatorStatusInfo" class="text-amber-300 font-black truncate max-w-[180px] sm:max-w-xs">플레이어를 클릭해 패를 확인하세요</span>
+          <div id="spectatorPlayerTabs" class="flex items-center gap-1"></div>
+          <span class="text-blue-200/85 font-black shrink-0">🂠 <span id="spectatorPoolCount">106</span></span>
+        </div>
         <div id="woodRack" class="wood-rack px-1.5 sm:px-2.5 pt-1 pb-2 max-w-full">
           <div id="rackRow0" class="wood-tier gap-0.5 pb-0.5"></div>
           <div id="rackRow1" class="wood-tier gap-0.5 pt-1 pb-0.5 border-b-0 shadow-none"></div>
-          <div id="woodRackLabel" class="wood-rack-logo">Rummikub</div>
-        </div>
-        <div id="spectatorBottomBar" class="hidden flex-wrap items-center justify-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-2xl bg-slate-950/85 border border-sky-400/55 text-sky-100 text-xs sm:text-sm font-bold shadow-xl backdrop-blur-md">
-          <span class="px-2 py-0.5 rounded-full bg-sky-500/25 border border-sky-400/60 text-sky-300 text-[11px] font-black shrink-0">👀 관전 모드</span>
-          <span id="spectatorStatusInfo" class="truncate max-w-[180px] sm:max-w-xs">실시간으로 경기를 관전 중입니다</span>
-          <span id="spectatorInspectHint" class="text-[11px] text-amber-200/90 font-bold">· 플레이어를 클릭하면 패를 볼 수 있어요</span>
-          <button id="btnCloseSpectateRack" type="button" class="hidden px-2 py-0.5 rounded-lg bg-rose-500/25 hover:bg-rose-500/40 border border-rose-400/60 text-rose-200 text-[11px] font-black transition">
-            패 닫기 ✕
-          </button>
-          <span class="text-amber-300 font-black shrink-0">🂠 <span id="spectatorPoolCount">106</span></span>
+          <div class="wood-rack-logo">Rummikub</div>
         </div>
       </section>
     </div>
@@ -909,10 +901,10 @@
 
         <div id="hostStartControls" class="hidden space-y-2">
           <button id="btnStartRoom" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-lg transition">
-            🎲 무작위 순서 추첨 후 시작하기
+            현재 인원으로 시작하기
           </button>
           <button id="btnStartWithAI" type="button" class="w-full py-2.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/60 text-amber-200 font-extrabold text-xs transition">
-            🤖 빈 자리는 AI로 채우고 무작위 순서로 시작
+            🤖 빈 자리는 AI로 채우고 바로 시작
           </button>
         </div>
 
@@ -1005,6 +997,7 @@
     const STORAGE_NAME_KEY = 'rummikub_player_name';
     const STORAGE_SID_KEY = 'rummikub_session_id';
 
+    // Use sessionStorage for sessionId so multiple tabs in the same browser don't collide
     let sessionId = sessionStorage.getItem(STORAGE_SID_KEY);
     if (!sessionId) {
       sessionId = 'sid-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -1333,10 +1326,7 @@
       hostSessionId: null,
       players: [],
       myPlayerIndex: -1,
-      firstPlayerIndex: 0,
       isSpectator: false,
-      spectateTargetIndex: -1,
-      spectatorRacks: {},
       spectatorCount: 0,
       spectators: [],
       currentPlayerIndex: 0,
@@ -1396,1784 +1386,25 @@
     const woodRack = document.getElementById('woodRack');
     const rackRow0 = document.getElementById('rackRow0');
     const rackRow1 = document.getElementById('rackRow1');
-    const woodRackLabel = document.getElementById('woodRackLabel');
     const spectatorBottomBar = document.getElementById('spectatorBottomBar');
     const spectatorStatusInfo = document.getElementById('spectatorStatusInfo');
-    const spectatorInspectHint = document.getElementById('spectatorInspectHint');
-    const btnCloseSpectateRack = document.getElementById('btnCloseSpectateRack');
+    const spectatorPlayerTabs = document.getElementById('spectatorPlayerTabs');
     const spectatorPoolCount = document.getElementById('spectatorPoolCount');
     const rightControlsAside = document.getElementById('rightControlsAside');
-    const playersBar = document.getElementById('playersBar');
-    const roomCodeBadgeWrap = document.getElementById('roomCodeBadgeWrap');
-    const hudRoomCode = document.getElementById('hudRoomCode');
-    const poolCountBadge = document.getElementById('poolCountBadge');
-    const turnStatusText = document.getElementById('turnStatusText');
-    const meldStatusBadge = document.getElementById('meldStatusBadge');
-    const spectatorModeBadge = document.getElementById('spectatorModeBadge');
-    const spectatorCountBadge = document.getElementById('spectatorCountBadge');
-    const finalRoundBadge = document.getElementById('finalRoundBadge');
-    const btnSortRun = document.getElementById('btnSortRun');
-    const btnSortGroup = document.getElementById('btnSortGroup');
-    const btnEndTurn = document.getElementById('btnEndTurn');
-    const btnEndTurnSymbol = document.getElementById('btnEndTurnSymbol');
-    const btnEndTurnLabel = document.getElementById('btnEndTurnLabel');
-    const holdRingContainer = document.getElementById('holdRingContainer');
-    const holdRingArc = document.getElementById('holdRingArc');
-    const holdRingCount = document.getElementById('holdRingCount');
-    const holdRingLabel = document.getElementById('holdRingLabel');
-    const dragLayer = document.getElementById('dragLayer');
-    const liftedBanner = document.getElementById('liftedBanner');
-    const liftedBannerText = document.getElementById('liftedBannerText');
-    const btnCancelLifted = document.getElementById('btnCancelLifted');
-    const myTurnAlertEl = document.getElementById('myTurnAlert');
-    const toastBox = document.getElementById('toastBox');
-    const toastInner = document.getElementById('toastInner');
-
-    const btnLeaveRoom = document.getElementById('btnLeaveRoom');
-    const btnCloseRoom = document.getElementById('btnCloseRoom');
-    const btnCloseRoomWaiting = document.getElementById('btnCloseRoomWaiting');
-    const btnCloseRoomGameOver = document.getElementById('btnCloseRoomGameOver');
-
-    const confirmActionModal = document.getElementById('confirmActionModal');
-    const confirmActionTitle = document.getElementById('confirmActionTitle');
-    const confirmActionDesc = document.getElementById('confirmActionDesc');
-    const btnConfirmActionOk = document.getElementById('btnConfirmActionOk');
-    const btnConfirmActionCancel = document.getElementById('btnConfirmActionCancel');
-
-    const nicknameModal = document.getElementById('nicknameModal');
-    const nicknameError = document.getElementById('nicknameError');
-    const chatLobbyModal = document.getElementById('chatLobbyModal');
-    const gameMenuModal = document.getElementById('gameMenuModal');
-    const lobbyOnlineBadge = document.getElementById('lobbyOnlineBadge');
-    const lobbyMyName = document.getElementById('lobbyMyName');
-    const lobbyUsersList = document.getElementById('lobbyUsersList');
-    const lobbyChatMessages = document.getElementById('lobbyChatMessages');
-    const lobbyChatForm = document.getElementById('lobbyChatForm');
-    const inputChatMessage = document.getElementById('inputChatMessage');
-    const openRoomsCountBadge = document.getElementById('openRoomsCountBadge');
-    const openRoomsList = document.getElementById('openRoomsList');
-    const inputPlayerName = document.getElementById('inputPlayerName');
-    const inputRoomCode = document.getElementById('inputRoomCode');
-    const lobbyError = document.getElementById('lobbyError');
-    const waitingModal = document.getElementById('waitingModal');
-    const waitingRoomCode = document.getElementById('waitingRoomCode');
-    const waitingPlayerCount = document.getElementById('waitingPlayerCount');
-    const waitingPlayersList = document.getElementById('waitingPlayersList');
-    const hostStartControls = document.getElementById('hostStartControls');
-    const guestWaitMsg = document.getElementById('guestWaitMsg');
-    const gameOverModal = document.getElementById('gameOverModal');
-
-    // Persistent Chat DOM
-    const btnInGameChat = document.getElementById('btnInGameChat');
-    const inGameChatBadge = document.getElementById('inGameChatBadge');
-    const inGameChatPanel = document.getElementById('inGameChatPanel');
-    const inGameChatHeader = document.getElementById('inGameChatHeader');
-    const btnToggleChatMode = document.getElementById('btnToggleChatMode');
-    const inGameChatRoomTag = document.getElementById('inGameChatRoomTag');
-    const tabRoomChat = document.getElementById('tabRoomChat');
-    const tabGlobalChat = document.getElementById('tabGlobalChat');
-    const tabRoomUnread = document.getElementById('tabRoomUnread');
-    const tabGlobalUnread = document.getElementById('tabGlobalUnread');
-    const inGameChatMessages = document.getElementById('inGameChatMessages');
-    const inGameChatForm = document.getElementById('inGameChatForm');
-    const inputInGameChat = document.getElementById('inputInGameChat');
-    const inGameChatPeek = document.getElementById('inGameChatPeek');
-    const inGameChatPeekSender = document.getElementById('inGameChatPeekSender');
-    const inGameChatPeekText = document.getElementById('inGameChatPeekText');
-
-    if (myPlayerName) inputPlayerName.value = myPlayerName;
-
-    let toastTimer = null;
-    function showToast(msg, tone = 'info') {
-      toastInner.textContent = msg;
-      toastInner.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-2xl border ' + (
-        tone === 'error'
-          ? 'bg-red-950/95 border-red-400/70 text-red-100'
-          : tone === 'success'
-            ? 'bg-emerald-950/95 border-emerald-400/70 text-emerald-100'
-            : 'bg-slate-950/90 border-blue-400/60 text-white'
-      );
-      toastBox.classList.remove('opacity-0', 'translate-y-2');
-      toastBox.classList.add('opacity-100', 'translate-y-0');
-      if (toastTimer) clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => {
-        toastBox.classList.add('opacity-0', 'translate-y-2');
-        toastBox.classList.remove('opacity-100', 'translate-y-0');
-      }, 2500);
-    }
-
-    let myTurnAlertTimer = null;
-    function showMyTurnBanner() {
-      playMyTurnAlert();
-      myTurnAlertEl.classList.remove('hidden');
-      if (myTurnAlertTimer) clearTimeout(myTurnAlertTimer);
-      myTurnAlertTimer = setTimeout(() => myTurnAlertEl.classList.add('hidden'), 2200);
-    }
-
-    function showLobbyError(msg) {
-      if (!msg) {
-        lobbyError.classList.add('hidden');
-        lobbyError.textContent = '';
-      } else {
-        lobbyError.textContent = msg;
-        lobbyError.classList.remove('hidden');
-      }
-    }
-
-    function showNicknameError(msg) {
-      if (!msg) {
-        nicknameError.classList.add('hidden');
-        nicknameError.textContent = '';
-      } else {
-        nicknameError.textContent = msg;
-        nicknameError.classList.remove('hidden');
-      }
-    }
-
-    function openConfirmModal({ title, desc, okText = '확인', okClass = 'bg-rose-500 hover:bg-rose-400 text-white', onConfirm }) {
-      confirmActionTitle.textContent = title;
-      confirmActionDesc.textContent = desc;
-      btnConfirmActionOk.textContent = okText;
-      btnConfirmActionOk.className = `flex-1 py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-lg transition ${okClass}`;
-      pendingConfirmHandler = onConfirm;
-      confirmActionModal.classList.remove('hidden');
-    }
-
-    function closeConfirmModal() {
-      pendingConfirmHandler = null;
-      confirmActionModal.classList.add('hidden');
-    }
-
-    btnConfirmActionCancel.addEventListener('click', closeConfirmModal);
-    btnConfirmActionOk.addEventListener('click', () => {
-      const fn = pendingConfirmHandler;
-      closeConfirmModal();
-      if (typeof fn === 'function') fn();
-    });
-
-    function escapeHtml(str) {
-      return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
-
-    function formatChatTime(ts) {
-      try {
-        const d = new Date(ts || Date.now());
-        return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-      } catch (_e) {
-        return '';
-      }
-    }
-
-    // ==================== LOBBY UI HELPERS ====================
-    function renderLobbyUsers(users) {
-      lobbyUsersData = Array.isArray(users) ? users : [];
-      lobbyOnlineBadge.textContent = `접속 ${lobbyUsersData.length}명`;
-      lobbyUsersList.innerHTML = '';
-      lobbyUsersData.forEach((u) => {
-        const isMe = u.sessionId === sessionId;
-        const pill = document.createElement('span');
-        pill.className = `px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 border ${
-          isMe
-            ? 'bg-amber-400/20 border-amber-300/70 text-amber-200'
-            : 'bg-blue-900/70 border-blue-500/40 text-blue-100'
-        }`;
-        pill.textContent = isMe ? `${u.name} (나)` : u.name;
-        lobbyUsersList.appendChild(pill);
-      });
-    }
-
-    function renderOpenRooms(roomsList) {
-      lobbyRoomsData = Array.isArray(roomsList) ? roomsList : [];
-      const waitingRooms = lobbyRoomsData.filter((r) => r.phase === 'waiting');
-      if (waitingRooms.length > 0) {
-        openRoomsCountBadge.textContent = String(waitingRooms.length);
-        openRoomsCountBadge.classList.remove('hidden');
-      } else {
-        openRoomsCountBadge.classList.add('hidden');
-      }
-
-      openRoomsList.innerHTML = '';
-      if (lobbyRoomsData.length === 0) {
-        openRoomsList.innerHTML = '<div class="text-center text-xs text-blue-200/70 py-4">현재 열린 게임방이 없습니다. 새 게임을 만들어보세요!</div>';
-        return;
-      }
-
-      lobbyRoomsData.forEach((r) => {
-        const isWaiting = r.phase === 'waiting';
-        const isFull = r.playerCount >= r.maxPlayers;
-        const canJoin = isWaiting && !isFull;
-        const canSpectate = !isWaiting;
-        const canEnter = canJoin || canSpectate;
-        const specNote = r.spectatorCount > 0 ? ` · 👀 관전 ${r.spectatorCount}명` : '';
-
-        const row = document.createElement('div');
-        row.className = 'flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-blue-500/35';
-        row.innerHTML = `
-          <div class="min-w-0">
-            <div class="flex items-center gap-1.5">
-              <span class="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-400/50 text-amber-300 font-black text-xs tracking-wider">${escapeHtml(r.code)}</span>
-              <span class="font-extrabold text-xs sm:text-sm text-white truncate">${escapeHtml(r.hostName)}님의 방</span>
-            </div>
-            <div class="text-[11px] text-blue-200/75 mt-0.5">
-              ${isWaiting ? '대기 중' : '게임 진행 중'} · ${r.playerCount} / ${r.maxPlayers}명${specNote}
-            </div>
-          </div>
-          <button type="button" data-join-code="${escapeHtml(r.code)}" ${canEnter ? '' : 'disabled'}
-            class="px-3 py-1.5 rounded-lg text-xs font-black shrink-0 transition ${
-              canJoin
-                ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 shadow active:scale-95'
-                : canSpectate
-                  ? 'bg-sky-400 hover:bg-sky-300 text-slate-950 shadow active:scale-95'
-                  : 'bg-slate-800 text-slate-400 cursor-not-allowed'
-            }">
-            ${canJoin ? '참여하기' : canSpectate ? '👀 관전하기' : '만원'}
-          </button>
-        `;
-        const joinBtn = row.querySelector('[data-join-code]');
-        if (joinBtn && canEnter) {
-          joinBtn.addEventListener('click', () => joinRoomByCode(r.code));
-        }
-        openRoomsList.appendChild(row);
-      });
-    }
-
-    function createChatBubbleNode(msg, allowRoomJoinBtn = false) {
-      const wrap = document.createElement('div');
-      if (msg.type === 'system') {
-        wrap.className = 'flex flex-col items-center my-1';
-        const inner = document.createElement('div');
-        inner.className = 'px-2.5 py-1 rounded-full bg-blue-950/80 border border-blue-400/30 text-[11px] font-bold text-blue-200/90 flex items-center gap-1.5 flex-wrap justify-center';
-        inner.innerHTML = `<span>${escapeHtml(msg.text)}</span>`;
-        if (allowRoomJoinBtn && msg.roomCode) {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'px-2 py-0.5 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[10px] shadow transition';
-          btn.textContent = `방 ${msg.roomCode} 입장`;
-          btn.addEventListener('click', () => joinRoomByCode(msg.roomCode));
-          inner.appendChild(btn);
-        }
-        wrap.appendChild(inner);
-      } else {
-        const isMe = msg.sessionId === sessionId;
-        const specBadge = !isMe && msg.isSpectator
-          ? ' <span class="px-1 py-0.2 rounded bg-sky-500/30 border border-sky-400/50 text-sky-200 text-[9px]">관전</span>'
-          : '';
-        wrap.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
-        wrap.innerHTML = `
-          <div class="text-[10px] font-bold text-blue-200/75 mb-0.5 px-1">
-            ${isMe ? '나' : escapeHtml(msg.senderName)}${specBadge} · ${formatChatTime(msg.timestamp)}
-          </div>
-          <div class="max-w-[86%] px-3 py-1.5 rounded-2xl text-xs sm:text-sm font-medium break-words shadow ${
-            isMe
-              ? 'bg-amber-400 text-slate-950 rounded-tr-sm font-bold'
-              : 'bg-blue-900/95 border border-blue-400/35 text-white rounded-tl-sm'
-          }">${escapeHtml(msg.text)}</div>
-        `;
-      }
-      return wrap;
-    }
-
-    function appendLobbyChatMessage(msg, shouldScroll = true) {
-      if (!msg) return;
-      lobbyChatHistory.push(msg);
-      if (lobbyChatHistory.length > 80) lobbyChatHistory.shift();
-
-      lobbyChatMessages.appendChild(createChatBubbleNode(msg, true));
-      if (shouldScroll) lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
-
-      if (state.phase !== 'lobby') {
-        if (inGameChatOpen && activeChatTab === 'global') {
-          if (inGameChatMessages.firstElementChild && inGameChatMessages.firstElementChild.dataset?.emptyPlaceholder === '1') {
-            inGameChatMessages.innerHTML = '';
-          }
-          inGameChatMessages.appendChild(createChatBubbleNode(msg, false));
-          inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
-        } else if (msg.type !== 'system' && msg.sessionId !== sessionId) {
-          globalUnreadCount++;
-          updateInGameChatBadges();
-        }
-      }
-    }
-
-    function renderAllLobbyMessages(messages) {
-      lobbyChatHistory = Array.isArray(messages) ? [...messages] : [];
-      lobbyChatMessages.innerHTML = '';
-      if (lobbyChatHistory.length === 0) {
-        lobbyChatMessages.appendChild(createChatBubbleNode({
-          type: 'system',
-          text: '루미큐브 클럽에 오신 것을 환영합니다! 자유롭게 채팅하고 우측 상단 [🎮 게임 메뉴]에서 방을 만들거나 참여해 보세요.',
-        }, false));
-      } else {
-        lobbyChatHistory.forEach((m) => lobbyChatMessages.appendChild(createChatBubbleNode(m, true)));
-      }
-      lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
-    }
-
-    function showChatLobbyView() {
-      closePersistentChat(false);
-      btnInGameChat.classList.add('hidden');
-      btnInGameChat.classList.remove('flex');
-      btnLeaveRoom.classList.add('hidden');
-      btnLeaveRoom.classList.remove('flex');
-      btnCloseRoom.classList.add('hidden');
-      btnCloseRoom.classList.remove('flex');
-      spectatorModeBadge.classList.add('hidden');
-      spectatorCountBadge.classList.add('hidden');
-      meldStatusBadge.classList.remove('hidden');
-      woodRack.classList.remove('hidden');
-      woodRackLabel.textContent = 'Rummikub';
-      spectatorBottomBar.classList.add('hidden');
-      spectatorBottomBar.classList.remove('flex');
-      rightControlsAside.classList.remove('hidden');
-      roomCodeBadgeWrap.classList.add('hidden');
-      roomCodeBadgeWrap.classList.remove('flex');
-      finalRoundBadge.classList.add('hidden');
-      hideInGameChatPeek();
-
-      waitingModal.classList.add('hidden');
-      gameOverModal.classList.add('hidden');
-      gameMenuModal.classList.add('hidden');
-      if (hasEnteredLobby) {
-        nicknameModal.classList.add('hidden');
-        chatLobbyModal.classList.remove('hidden');
-        if (socket && socket.connected) {
-          socket.emit('lobby:getRooms', {}, (res) => {
-            if (res && res.ok) {
-              renderLobbyUsers(res.users);
-              renderOpenRooms(res.rooms);
-            }
-          });
-        }
-      } else {
-        chatLobbyModal.classList.add('hidden');
-        nicknameModal.classList.remove('hidden');
-      }
-    }
-
-    // ==================== PERSISTENT FLOATING / SPLIT CHAT ====================
-    function updateInGameChatBadges() {
-      const totalUnread = roomUnreadCount + globalUnreadCount;
-      const showTopBadge = totalUnread > 0 && !inGameChatOpen;
-      if (showTopBadge) {
-        const label = totalUnread > 99 ? '99+' : String(totalUnread);
-        inGameChatBadge.textContent = label;
-        inGameChatBadge.classList.remove('hidden');
-        inGameChatBadge.classList.add('flex');
-      } else {
-        inGameChatBadge.classList.add('hidden');
-        inGameChatBadge.classList.remove('flex');
-      }
-
-      if (roomUnreadCount > 0 && !(inGameChatOpen && activeChatTab === 'room')) {
-        tabRoomUnread.textContent = String(roomUnreadCount);
-        tabRoomUnread.classList.remove('hidden');
-      } else {
-        tabRoomUnread.classList.add('hidden');
-      }
-
-      if (globalUnreadCount > 0 && !(inGameChatOpen && activeChatTab === 'global')) {
-        tabGlobalUnread.textContent = String(globalUnreadCount);
-        tabGlobalUnread.classList.remove('hidden');
-      } else {
-        tabGlobalUnread.classList.add('hidden');
-      }
-    }
-
-    function hideInGameChatPeek() {
-      inGameChatPeek.classList.add('hidden');
-      if (inGamePeekTimer) {
-        clearTimeout(inGamePeekTimer);
-        inGamePeekTimer = null;
-      }
-    }
-
-    function showInGameChatPeek(msg) {
-      if (!msg || inGameChatOpen || state.phase === 'lobby') return;
-      inGameChatPeekSender.textContent = `💬 ${msg.senderName}`;
-      inGameChatPeekText.textContent = msg.text;
-      inGameChatPeek.classList.remove('hidden');
-      if (inGamePeekTimer) clearTimeout(inGamePeekTimer);
-      inGamePeekTimer = setTimeout(() => inGameChatPeek.classList.add('hidden'), 3600);
-    }
-
-    function renderActiveChatTabMessages() {
-      inGameChatMessages.innerHTML = '';
-      const list = activeChatTab === 'room' ? roomChatHistory : lobbyChatHistory;
-      if (list.length === 0) {
-        const empty = document.createElement('div');
-        empty.dataset.emptyPlaceholder = '1';
-        empty.className = 'text-center text-[11px] text-blue-200/65 py-6';
-        empty.textContent = activeChatTab === 'room'
-          ? '대기실과 게임 중에도 방 친구들과 실시간으로 대화해 보세요!'
-          : '루미큐브 클럽 메시지가 여기에 표시됩니다.';
-        inGameChatMessages.appendChild(empty);
-      } else {
-        list.forEach((m) => inGameChatMessages.appendChild(createChatBubbleNode(m, false)));
-      }
-      inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
-    }
-
-    function setActiveChatTab(tab) {
-      activeChatTab = tab === 'global' ? 'global' : 'room';
-      if (activeChatTab === 'room') {
-        roomUnreadCount = 0;
-        tabRoomChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-400 text-slate-950 transition flex items-center gap-1';
-        tabGlobalChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-950/80 text-blue-200 hover:bg-blue-900 border border-blue-500/30 transition flex items-center gap-1';
-        inputInGameChat.placeholder = '방 채팅 입력...';
-      } else {
-        globalUnreadCount = 0;
-        tabGlobalChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-400 text-slate-950 transition flex items-center gap-1';
-        tabRoomChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-950/80 text-blue-200 hover:bg-blue-900 border border-blue-500/30 transition flex items-center gap-1';
-        inputInGameChat.placeholder = '루미큐브 클럽 입력...';
-      }
-      updateInGameChatBadges();
-      renderActiveChatTabMessages();
-    }
-
-    function applyChatDisplayMode(mode) {
-      chatDisplayMode = mode === 'split' ? 'split' : 'floating';
-      if (chatDisplayMode === 'split') {
-        inGameChatPanel.classList.remove('chat-mode-floating');
-        inGameChatPanel.classList.add('chat-mode-split');
-        inGameChatPanel.style.left = '';
-        inGameChatPanel.style.top = '';
-        inGameChatPanel.style.right = '';
-        inGameChatPanel.style.bottom = '';
-        inGameChatHeader.classList.remove('draggable-chat-header');
-        btnToggleChatMode.textContent = '❐ 플로팅';
-        if (inGameChatOpen) document.body.classList.add('chat-split-open');
-      } else {
-        inGameChatPanel.classList.remove('chat-mode-split');
-        inGameChatPanel.classList.add('chat-mode-floating');
-        inGameChatHeader.classList.add('draggable-chat-header');
-        btnToggleChatMode.textContent = '◫ 분할';
-        document.body.classList.remove('chat-split-open');
-      }
-      if (state.phase === 'playing' || state.phase === 'gameover') {
-        requestAnimationFrame(() => {
-          computeBoardDimensions(false);
-          renderBoard();
-          renderRack();
-        });
-      }
-    }
-
-    function openPersistentChat(focusInput = false) {
-      inGameChatOpen = true;
-      inGameChatUserMinimized = false;
-      if (activeChatTab === 'room') roomUnreadCount = 0;
-      else globalUnreadCount = 0;
-      updateInGameChatBadges();
-      hideInGameChatPeek();
-
-      inGameChatRoomTag.textContent = state.code || '----';
-      inGameChatPanel.classList.remove('hidden');
-      inGameChatPanel.classList.add('flex');
-
-      if (chatDisplayMode === 'split') {
-        document.body.classList.add('chat-split-open');
-      }
-      renderActiveChatTabMessages();
-      if (state.phase === 'playing' || state.phase === 'gameover') {
-        requestAnimationFrame(() => {
-          computeBoardDimensions(false);
-          renderBoard();
-          renderRack();
-        });
-      }
-      if (focusInput) setTimeout(() => inputInGameChat.focus(), 40);
-    }
-
-    function closePersistentChat(byUser = true) {
-      inGameChatOpen = false;
-      if (byUser) inGameChatUserMinimized = true;
-      inGameChatPanel.classList.add('hidden');
-      inGameChatPanel.classList.remove('flex');
-      document.body.classList.remove('chat-split-open');
-      updateInGameChatBadges();
-      if (state.phase === 'playing' || state.phase === 'gameover') {
-        requestAnimationFrame(() => {
-          computeBoardDimensions(false);
-          renderBoard();
-          renderRack();
-        });
-      }
-    }
-
-    function togglePersistentChat() {
-      if (inGameChatOpen) closePersistentChat(true);
-      else openPersistentChat(true);
-    }
-
-    function sendActivePersistentChat(text) {
-      if (!socket) return;
-      const clean = String(text || '').trim();
-      if (!clean) return;
-      if (activeChatTab === 'room') {
-        if (!state.code) return;
-        socket.emit('room:chat', { text: clean }, (res) => {
-          if (res && res.error) showToast(res.error, 'error');
-        });
-      } else {
-        socket.emit('lobby:chat', { text: clean }, (res) => {
-          if (res && res.error) showToast(res.error, 'error');
-        });
-      }
-    }
-
-    // Floating Chat Panel Dragging
-    const chatDrag = { active: false, pointerId: null, offsetX: 0, offsetY: 0 };
-    inGameChatHeader.addEventListener('pointerdown', (e) => {
-      if (chatDisplayMode !== 'floating') return;
-      if (e.target.closest('button')) return;
-      e.preventDefault();
-      const rect = inGameChatPanel.getBoundingClientRect();
-      chatDrag.active = true;
-      chatDrag.pointerId = e.pointerId;
-      chatDrag.offsetX = e.clientX - rect.left;
-      chatDrag.offsetY = e.clientY - rect.top;
-      inGameChatPanel.style.left = `${rect.left}px`;
-      inGameChatPanel.style.top = `${rect.top}px`;
-      inGameChatPanel.style.right = 'auto';
-      inGameChatPanel.style.bottom = 'auto';
-      window.addEventListener('pointermove', onChatDragMove, { passive: false });
-      window.addEventListener('pointerup', onChatDragUp);
-      window.addEventListener('pointercancel', onChatDragUp);
-    });
-
-    function onChatDragMove(e) {
-      if (!chatDrag.active || e.pointerId !== chatDrag.pointerId) return;
-      e.preventDefault();
-      const rect = inGameChatPanel.getBoundingClientRect();
-      const maxX = Math.max(8, window.innerWidth - rect.width - 8);
-      const maxY = Math.max(8, window.innerHeight - rect.height - 8);
-      const nextX = Math.max(8, Math.min(maxX, e.clientX - chatDrag.offsetX));
-      const nextY = Math.max(8, Math.min(maxY, e.clientY - chatDrag.offsetY));
-      inGameChatPanel.style.left = `${nextX}px`;
-      inGameChatPanel.style.top = `${nextY}px`;
-    }
-
-    function onChatDragUp(e) {
-      if (!chatDrag.active || e.pointerId !== chatDrag.pointerId) return;
-      chatDrag.active = false;
-      chatDrag.pointerId = null;
-      window.removeEventListener('pointermove', onChatDragMove);
-      window.removeEventListener('pointerup', onChatDragUp);
-      window.removeEventListener('pointercancel', onChatDragUp);
-    }
-
-    // ==================== CORE TURN, RACK & SET HELPERS ====================
-    function isMyTurn() {
-      return !state.isSpectator && state.phase === 'playing' && state.myPlayerIndex >= 0 && state.currentPlayerIndex === state.myPlayerIndex;
-    }
-
-    function getMyRackTiles() {
-      return state.myRack.filter(Boolean);
-    }
-
-    function ensureMyRackCapacity() {
-      const minSlots = 20;
-      const count = getMyRackTiles().length;
-      const neededPerRow = Math.max(10, Math.ceil(count / 2) + 2);
-      const targetLen = Math.max(minSlots, neededPerRow * 2);
-      while (state.myRack.length < targetLen) state.myRack.push(null);
-      if (state.myRack.length % 2 !== 0) state.myRack.push(null);
-    }
-
-    function addTileToMyRack(tile) {
-      ensureMyRackCapacity();
-      const emptyIdx = state.myRack.indexOf(null);
-      if (emptyIdx !== -1) state.myRack[emptyIdx] = tile;
-      else state.myRack.push(tile);
-    }
-
-    function validateSet(tiles) {
-      if (!tiles || tiles.length < 3) return { valid: false, type: null, points: 0 };
-      const nonJokers = tiles.filter((t) => !t.isJoker);
-      if (nonJokers.length === 0) return { valid: false, type: null, points: 0 };
-
-      if (tiles.length <= 4) {
-        const num = nonJokers[0].num;
-        const allSameNum = nonJokers.every((t) => t.num === num);
-        const colorSet = new Set(nonJokers.map((t) => t.color));
-        if (allSameNum && colorSet.size === nonJokers.length) {
-          return { valid: true, type: 'group', points: num * tiles.length };
-        }
-      }
-
-      if (tiles.length <= 13) {
-        const color = nonJokers[0].color;
-        if (nonJokers.every((t) => t.color === color)) {
-          const firstIdx = tiles.findIndex((t) => !t.isJoker);
-          const startNum = tiles[firstIdx].num - firstIdx;
-          if (startNum >= 1 && startNum + tiles.length - 1 <= 13) {
-            let ok = true;
-            let pts = 0;
-            for (let i = 0; i < tiles.length; i++) {
-              const expected = startNum + i;
-              if (!tiles[i].isJoker && tiles[i].num !== expected) {
-                ok = false;
-                break;
-              }
-              pts += expected;
-            }
-            if (ok) return { valid: true, type: 'run', points: pts };
-          }
-        }
-      }
-      return { valid: false, type: null, points: 0 };
-    }
-
-    function canCombineTiles(tiles) {
-      if (!tiles || tiles.length < 2) return false;
-      const nonJokers = tiles.filter((t) => !t.isJoker);
-      if (nonJokers.length === 0) return tiles.length <= 4;
-
-      if (tiles.length <= 4) {
-        const num = nonJokers[0].num;
-        const allSameNum = nonJokers.every((t) => t.num === num);
-        const colorSet = new Set(nonJokers.map((t) => t.color));
-        if (allSameNum && colorSet.size === nonJokers.length) return true;
-      }
-
-      if (tiles.length <= 13) {
-        const color = nonJokers[0].color;
-        if (nonJokers.every((t) => t.color === color)) {
-          const firstIdx = tiles.findIndex((t) => !t.isJoker);
-          const startNum = tiles[firstIdx].num - firstIdx;
-          if (startNum >= 1 && startNum + tiles.length - 1 <= 13) {
-            let ok = true;
-            for (let i = 0; i < tiles.length; i++) {
-              if (!tiles[i].isJoker && tiles[i].num !== startNum + i) {
-                ok = false;
-                break;
-              }
-            }
-            if (ok) return true;
-          }
-        }
-      }
-      return false;
-    }
-
-    function getBoardGroups(board = state.board) {
-      const groups = [];
-      for (let r = 0; r < GRID_ROWS; r++) {
-        const rowArr = board[r];
-        if (!rowArr) continue;
-        let c = 0;
-        while (c < GRID_COLS) {
-          if (rowArr[c]) {
-            const startCol = c;
-            const tiles = [];
-            while (c < GRID_COLS && rowArr[c]) {
-              tiles.push(rowArr[c]);
-              c++;
-            }
-            const check = validateSet(tiles);
-            groups.push({ row: r, startCol, endCol: c - 1, tiles, ...check });
-          } else {
-            c++;
-          }
-        }
-      }
-      return groups;
-    }
-
-    function extractMadeRuns(tiles) {
-      const used = new Set();
-      const runs = [];
-      for (const color of COLORS) {
-        let found = true;
-        while (found) {
-          found = false;
-          const byNum = new Map();
-          for (const t of tiles) {
-            if (!t.isJoker && !used.has(t.id) && t.color === color && !byNum.has(t.num)) byNum.set(t.num, t);
-          }
-          let n = 1;
-          while (n <= 13) {
-            if (byNum.has(n)) {
-              const seq = [];
-              while (n <= 13 && byNum.has(n)) {
-                seq.push(byNum.get(n));
-                n++;
-              }
-              if (seq.length >= 3) {
-                seq.forEach((t) => used.add(t.id));
-                runs.push(seq);
-                found = true;
-                break;
-              }
-            } else {
-              n++;
-            }
-          }
-        }
-      }
-      runs.sort((a, b) => (a[0].color !== b[0].color ? COLOR_ORDER[a[0].color] - COLOR_ORDER[b[0].color] : a[0].num - b[0].num));
-      return { made: runs, remaining: tiles.filter((t) => !used.has(t.id)) };
-    }
-
-    function extractMadeGroups(tiles) {
-      const used = new Set();
-      const groups = [];
-      for (let num = 1; num <= 13; num++) {
-        let found = true;
-        while (found) {
-          found = false;
-          const picked = [];
-          const seen = new Set();
-          for (const color of COLORS) {
-            const m = tiles.find((t) => !t.isJoker && !used.has(t.id) && t.num === num && t.color === color && !seen.has(color));
-            if (m) {
-              seen.add(color);
-              picked.push(m);
-            }
-          }
-          if (picked.length >= 3) {
-            picked.forEach((t) => used.add(t.id));
-            groups.push(picked);
-            found = true;
-          }
-        }
-      }
-      return { made: groups, remaining: tiles.filter((t) => !used.has(t.id)) };
-    }
-
-    function compareByRun(a, b) {
-      if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
-      if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
-      if (a.num !== b.num) return a.num - b.num;
-      return a.id - b.id;
-    }
-
-    function compareByGroup(a, b) {
-      if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
-      if (a.num !== b.num) return a.num - b.num;
-      if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
-      return a.id - b.id;
-    }
-
-    function placeSortedGroupsOnMyRack(madeSets, remainingTiles) {
-      const totalTiles = madeSets.reduce((sum, s) => sum + s.length, 0) + remainingTiles.length;
-      const gapCount = madeSets.length;
-      const slotsPerRow = Math.max(10, Math.ceil((totalTiles + gapCount + 1) / 2) + 1);
-      const rack = Array(slotsPerRow * 2).fill(null);
-
-      let row = 0;
-      let col = 0;
-      for (const set of madeSets) {
-        if (col > 0 && col + set.length > slotsPerRow && row === 0) { row = 1; col = 0; }
-        for (const t of set) {
-          if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
-          const idx = row * slotsPerRow + col;
-          if (idx < rack.length) rack[idx] = t;
-          else rack.push(t);
-          col++;
-        }
-        col++;
-        if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
-      }
-      for (const t of remainingTiles) {
-        if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
-        const idx = row * slotsPerRow + col;
-        if (idx < rack.length) rack[idx] = t;
-        else rack.push(t);
-        col++;
-      }
-      if (rack.length % 2 !== 0) rack.push(null);
-      state.myRack = rack;
-    }
-
-    function syncRackOrderToServer() {
-      if (socket && state.phase === 'playing' && !state.isSpectator) {
-        socket.emit('game:syncRack', { rack: state.myRack });
-      }
-    }
-
-    function syncBoardMoveToServer() {
-      if (socket && state.phase === 'playing' && isMyTurn()) {
-        socket.emit('game:syncMove', { board: state.board, rack: state.myRack }, (res) => {
-          if (res && res.error) {
-            showToast(res.error, 'error');
-            requestRoomResync();
-          }
-        });
-      }
-    }
-
-    function sortRackByRun() {
-      if (state.phase !== 'playing' || state.isSpectator) return;
-      clearLifted();
-      const runPass = extractMadeRuns(getMyRackTiles());
-      placeSortedGroupsOnMyRack(runPass.made, [...runPass.remaining].sort(compareByRun));
-      playClack(true);
-      renderRack();
-      syncRackOrderToServer();
-      showToast(runPass.made.length > 0 ? `789 연속 정렬 (연속 메이드 ${runPass.made.length}세트 앞쪽 배치)` : '789 연속 정렬 완료');
-    }
-
-    function sortRackByGroup() {
-      if (state.phase !== 'playing' || state.isSpectator) return;
-      clearLifted();
-      const grpPass = extractMadeGroups(getMyRackTiles());
-      placeSortedGroupsOnMyRack(grpPass.made, [...grpPass.remaining].sort(compareByGroup));
-      playClack(true);
-      renderRack();
-      syncRackOrderToServer();
-      showToast(grpPass.made.length > 0 ? `777 숫자 정렬 (숫자 메이드 ${grpPass.made.length}세트 앞쪽 배치)` : '777 숫자 정렬 완료');
-    }
-
-    // ==================== COMPATIBLE FORWARD CHAIN & MADE SET ====================
-    function getBoardContiguousGroup(row, col, board = state.board) {
-      if (!board[row] || !board[row][col]) return [];
-      let cStart = col;
-      while (cStart > 0 && board[row][cStart - 1]) cStart--;
-      let cEnd = col;
-      while (cEnd < GRID_COLS - 1 && board[row][cEnd + 1]) cEnd++;
-      const res = [];
-      for (let c = cStart; c <= cEnd; c++) res.push({ tile: board[row][c], row, col: c });
-      return res;
-    }
-
-    function getRackRowContiguousItems(rackIdx) {
-      if (!state.myRack[rackIdx]) return [];
-      const rowSize = Math.floor(state.myRack.length / 2);
-      const rowStart = rackIdx < rowSize ? 0 : rowSize;
-      const rowEnd = rowStart + rowSize - 1;
-      let cStart = rackIdx;
-      while (cStart > rowStart && state.myRack[cStart - 1]) cStart--;
-      let cEnd = rackIdx;
-      while (cEnd < rowEnd && state.myRack[cEnd + 1]) cEnd++;
-      const res = [];
-      for (let i = cStart; i <= cEnd; i++) res.push({ tile: state.myRack[i], idx: i });
-      return res;
-    }
-
-    function getCompatibleForwardChain(items, startIdx) {
-      if (!items || startIdx < 0 || startIdx >= items.length) return [];
-      const first = items[startIdx];
-      if (!first || !first.tile) return [];
-
-      if (first.tile.isJoker) {
-        if (startIdx + 1 >= items.length) return [first];
-        const nextChain = getCompatibleForwardChain(items, startIdx + 1);
-        if (nextChain.length >= 2) {
-          const combined = [first.tile, ...nextChain.map((x) => x.tile)];
-          if (validateSet(combined).valid) return [first, ...nextChain];
-        }
-        return [first];
-      }
-
-      const runChain = [first];
-      let expectedNum = first.tile.num + 1;
-      for (let i = startIdx + 1; i < items.length; i++) {
-        const cur = items[i];
-        if (!cur || !cur.tile) break;
-        if (!cur.tile.isJoker && cur.tile.color === first.tile.color && cur.tile.num === expectedNum) {
-          runChain.push(cur);
-          expectedNum++;
-        } else if (
-          cur.tile.isJoker &&
-          expectedNum <= 13 &&
-          (
-            runChain.length >= 2 ||
-            (
-              i + 1 < items.length &&
-              items[i + 1]?.tile &&
-              !items[i + 1].tile.isJoker &&
-              items[i + 1].tile.color === first.tile.color &&
-              items[i + 1].tile.num === expectedNum + 1
-            )
-          )
-        ) {
-          runChain.push(cur);
-          expectedNum++;
-        } else {
-          break;
-        }
-      }
-
-      const groupChain = [first];
-      const usedColors = new Set([first.tile.color]);
-      for (let i = startIdx + 1; i < items.length && groupChain.length < 4; i++) {
-        const cur = items[i];
-        if (!cur || !cur.tile) break;
-        if (!cur.tile.isJoker && cur.tile.num === first.tile.num && !usedColors.has(cur.tile.color)) {
-          usedColors.add(cur.tile.color);
-          groupChain.push(cur);
-        } else if (cur.tile.isJoker && groupChain.length >= 2) {
-          groupChain.push(cur);
-        } else {
-          break;
-        }
-      }
-
-      return groupChain.length > runChain.length ? groupChain : runChain;
-    }
-
-    function findMadeSetForRackTile(rackIdx) {
-      const contig = getRackRowContiguousItems(rackIdx);
-      if (contig.length < 3) return null;
-      const anchorPos = contig.findIndex((x) => x.idx === rackIdx);
-      if (anchorPos === -1) return null;
-
-      let best = null;
-      for (let s = 0; s <= anchorPos; s++) {
-        for (let e = contig.length - 1; e >= anchorPos; e--) {
-          if (e - s + 1 < 3) continue;
-          const slice = contig.slice(s, e + 1).map((x) => x.tile);
-          const check = validateSet(slice);
-          if (check.valid) {
-            if (!best || slice.length > best.tiles.length || (slice.length === best.tiles.length && check.points > best.points)) {
-              best = { tiles: slice, points: check.points };
-            }
-          }
-        }
-      }
-      return best ? best.tiles : null;
-    }
-
-    // ==================== BOARD PLACEMENT, GROUP INSERT & AUTO-SPACE ====================
-    function isAreaFreeOn(board, row, col, len, ignoreIds = new Set()) {
-      if (row < 0 || row >= GRID_ROWS || col < 0 || col + len > GRID_COLS) return false;
-      for (let i = 0; i < len; i++) {
-        const occ = board[row][col + i];
-        if (occ && !ignoreIds.has(occ.id)) return false;
-      }
-      return true;
-    }
-
-    function isAreaFreeOnBoard(row, col, len, ignoreIds = new Set()) {
-      return isAreaFreeOn(state.board, row, col, len, ignoreIds);
-    }
-
-    function findAutoSplitForGroup(groupTiles, insertedTiles) {
-      if (!groupTiles || groupTiles.length < 4 || !insertedTiles || insertedTiles.length === 0) return null;
-      for (let k = 1; k < groupTiles.length; k++) {
-        const leftPart = groupTiles.slice(0, k);
-        const rightPart = groupTiles.slice(k);
-        const setA1 = [...leftPart, ...insertedTiles];
-        if (validateSet(setA1).valid && validateSet(rightPart).valid) return { setA: setA1, setB: rightPart };
-        const setB2 = [...insertedTiles, ...rightPart];
-        if (validateSet(leftPart).valid && validateSet(setB2).valid) return { setA: leftPart, setB: setB2 };
-      }
-      return null;
-    }
-
-    function findGroupInsertForGroup(groupTiles, insertedTiles, insertOffset) {
-      if (!groupTiles || groupTiles.length !== 3 || !insertedTiles || insertedTiles.length !== 1) return null;
-      const baseCheck = validateSet(groupTiles);
-      if (!baseCheck.valid || baseCheck.type !== 'group') return null;
-      const idx = Math.max(0, Math.min(groupTiles.length, insertOffset));
-      const newTiles = [...groupTiles.slice(0, idx), insertedTiles[0], ...groupTiles.slice(idx)];
-      const nextCheck = validateSet(newTiles);
-      if (nextCheck.valid && nextCheck.type === 'group') {
-        return { newTiles };
-      }
-      return null;
-    }
-
-    function findNearestEmptySpotOn(board, prefRow, prefCol, len, ignoreIds = new Set()) {
-      let bestWithGap = null;
-      let bestGapDist = Infinity;
-      let bestAny = null;
-      let bestAnyDist = Infinity;
-      for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c <= GRID_COLS - len; c++) {
-          if (!isAreaFreeOn(board, r, c, len, ignoreIds)) continue;
-          const dist = Math.hypot(c - prefCol, (r - prefRow) * 2.2);
-          const leftTile = c > 0 ? board[r][c - 1] : null;
-          const rightTile = c + len < GRID_COLS ? board[r][c + len] : null;
-          const leftClear = !leftTile || ignoreIds.has(leftTile.id);
-          const rightClear = !rightTile || ignoreIds.has(rightTile.id);
-          if (leftClear && rightClear && dist < bestGapDist) {
-            bestGapDist = dist;
-            bestWithGap = { row: r, col: c };
-          }
-          if (dist < bestAnyDist) {
-            bestAnyDist = dist;
-            bestAny = { row: r, col: c };
-          }
-        }
-      }
-      return bestWithGap || bestAny;
-    }
-
-    function findNearestEmptySpot(prefRow, prefCol, len, ignoreIds = new Set()) {
-      return findNearestEmptySpotOn(state.board, prefRow, prefCol, len, ignoreIds);
-    }
-
-    function compactBoardToMakeSpace(board, neededLen, ignoreIds = new Set()) {
-      const groups = [];
-      for (let r = 0; r < GRID_ROWS; r++) {
-        let c = 0;
-        while (c < GRID_COLS) {
-          const t = board[r][c];
-          if (t && !ignoreIds.has(t.id)) {
-            const tiles = [];
-            while (c < GRID_COLS && board[r][c] && !ignoreIds.has(board[r][c].id)) {
-              tiles.push({ ...board[r][c] });
-              c++;
-            }
-            groups.push(tiles);
-          } else {
-            c++;
-          }
-        }
-      }
-
-      const nextBoard = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
-      let curR = 0;
-      let curC = 0;
-      for (const g of groups) {
-        if (curC > 0 && curC + g.length > GRID_COLS) {
-          curR++;
-          curC = 0;
-        }
-        if (curR >= GRID_ROWS || curC + g.length > GRID_COLS) return null;
-        for (let i = 0; i < g.length; i++) nextBoard[curR][curC + i] = g[i];
-        curC += g.length + 1;
-        if (curC >= GRID_COLS) {
-          curR++;
-          curC = 0;
-        }
-      }
-
-      const spot = findNearestEmptySpotOn(nextBoard, curR, curC, neededLen);
-      if (!spot) return null;
-      return { board: nextBoard, spot };
-    }
-
-    function planPlaceMadeWithAutoRelocate(row, startCol, tilesToPlace, removeIds = new Set()) {
-      const len = tilesToPlace.length;
-      if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
-
-      const pushed = planPushBlockersAround(row, startCol, tilesToPlace, removeIds);
-      if (pushed) {
-        return {
-          row: pushed.row,
-          col: pushed.col,
-          pushMoves: pushed.pushMoves,
-          nextBoard: pushed.nextBoard,
-          relocatedExisting: true,
-        };
-      }
-
-      const existingGroups = [];
-      for (let r = 0; r < GRID_ROWS; r++) {
-        let c = 0;
-        while (c < GRID_COLS) {
-          const t = state.board[r][c];
-          if (t && !removeIds.has(t.id)) {
-            const gStart = c;
-            const gTiles = [];
-            while (c < GRID_COLS && state.board[r][c] && !removeIds.has(state.board[r][c].id)) {
-              gTiles.push({ ...state.board[r][c] });
-              c++;
-            }
-            existingGroups.push({ row: r, startCol: gStart, tiles: gTiles });
-          } else {
-            c++;
-          }
-        }
-      }
-
-      const simBoard = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
-      for (let i = 0; i < len; i++) simBoard[row][startCol + i] = { ...tilesToPlace[i] };
-
-      const moves = [];
-      for (const g of existingGroups) {
-        const spot = findNearestEmptySpotOn(simBoard, g.row, g.startCol, g.tiles.length);
-        if (!spot) return null;
-        for (let i = 0; i < g.tiles.length; i++) simBoard[spot.row][spot.col + i] = g.tiles[i];
-        moves.push({ blocker: g, dest: spot });
-      }
-
-      return {
-        row,
-        col: startCol,
-        pushMoves: moves,
-        nextBoard: simBoard,
-        relocatedExisting: true,
-      };
-    }
-
-    function planPushBlockersAround(row, startCol, tilesToPlace, removeIds = new Set(), keepIds = new Set()) {
-      const len = tilesToPlace.length;
-      if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
-
-      const blockers = [];
-      let c = 0;
-      while (c < GRID_COLS) {
-        const t = state.board[row][c];
-        if (t && !removeIds.has(t.id)) {
-          const gStart = c;
-          const gTiles = [];
-          while (c < GRID_COLS && state.board[row][c] && !removeIds.has(state.board[row][c].id)) {
-            gTiles.push(state.board[row][c]);
-            c++;
-          }
-          const gEnd = c - 1;
-          const isKept = gTiles.some((x) => keepIds.has(x.id));
-          if (!isKept && gEnd >= startCol - 1 && gStart <= startCol + len) {
-            blockers.push({ row, startCol: gStart, endCol: gEnd, tiles: gTiles });
-          }
-        } else {
-          c++;
-        }
-      }
-
-      if (blockers.length === 0) return null;
-
-      const simBoard = state.board.map((rowArr) => rowArr.map((t) => (t ? { ...t } : null)));
-
-      const removedSimSpots = [];
-      for (let r = 0; r < GRID_ROWS; r++) {
-        for (let colIdx = 0; colIdx < GRID_COLS; colIdx++) {
-          if (simBoard[r][colIdx] && removeIds.has(simBoard[r][colIdx].id)) {
-            simBoard[r][colIdx] = null;
-            removedSimSpots.push({ row: r, col: colIdx });
-          }
-        }
-      }
-      if (removedSimSpots.length === 1) closeGroupGapsOn(simBoard, removedSimSpots);
-
-      for (const b of blockers) {
-        for (let colIdx = b.startCol; colIdx <= b.endCol; colIdx++) simBoard[b.row][colIdx] = null;
-      }
-
-      for (let i = 0; i < len; i++) {
-        if (simBoard[row][startCol + i]) return null;
-      }
-      for (let i = 0; i < len; i++) simBoard[row][startCol + i] = tilesToPlace[i];
-
-      const moves = [];
-      for (const b of blockers) {
-        const bLen = b.tiles.length;
-        let dest = null;
-        const preferRight = b.startCol >= startCol;
-        if (preferRight) {
-          for (let colIdx = startCol + len + 1; colIdx <= GRID_COLS - bLen; colIdx++) {
-            if (!isAreaFreeOn(simBoard, row, colIdx, bLen)) continue;
-            const lClear = colIdx === 0 || !simBoard[row][colIdx - 1];
-            const rClear = colIdx + bLen >= GRID_COLS || !simBoard[row][colIdx + bLen];
-            if (lClear && rClear) { dest = { row, col: colIdx }; break; }
-          }
-        } else {
-          for (let colIdx = startCol - bLen - 1; colIdx >= 0; colIdx--) {
-            if (!isAreaFreeOn(simBoard, row, colIdx, bLen)) continue;
-            const lClear = colIdx === 0 || !simBoard[row][colIdx - 1];
-            const rClear = colIdx + bLen >= GRID_COLS || !simBoard[row][colIdx + bLen];
-            if (lClear && rClear) { dest = { row, col: colIdx }; break; }
-          }
-        }
-        if (!dest) dest = findNearestEmptySpotOn(simBoard, row, b.startCol, bLen);
-        if (!dest) return null;
-        for (let i = 0; i < bLen; i++) simBoard[dest.row][dest.col + i] = b.tiles[i];
-        moves.push({ blocker: b, dest });
-      }
-      return { row, col: startCol, pushMoves: moves, nextBoard: simBoard };
-    }
-
-    function planGroupInsertPlacement(row, gStart, gEnd, newTiles, ignoreIds) {
-      const len = newTiles.length;
-      const groupIgnore = new Set(ignoreIds);
-      for (let c = gStart; c <= gEnd; c++) {
-        if (state.board[row][c]) groupIgnore.add(state.board[row][c].id);
-      }
-
-      if (gStart + len <= GRID_COLS && isAreaFreeOnBoard(row, gStart, len, groupIgnore)) {
-        const lOk = gStart === 0 || !state.board[row][gStart - 1] || groupIgnore.has(state.board[row][gStart - 1].id);
-        const rOk = gStart + len >= GRID_COLS || !state.board[row][gStart + len] || groupIgnore.has(state.board[row][gStart + len].id);
-        if (lOk && rOk) return { mode: 'inplace', row, col: gStart };
-      }
-
-      const leftStart = gEnd - len + 1;
-      if (leftStart >= 0 && isAreaFreeOnBoard(row, leftStart, len, groupIgnore)) {
-        const lOk = leftStart === 0 || !state.board[row][leftStart - 1] || groupIgnore.has(state.board[row][leftStart - 1].id);
-        const rOk = leftStart + len >= GRID_COLS || !state.board[row][leftStart + len] || groupIgnore.has(state.board[row][leftStart + len].id);
-        if (lOk && rOk) return { mode: 'inplace', row, col: leftStart };
-      }
-
-      const candidateCols = [];
-      if (gStart + len <= GRID_COLS) candidateCols.push(gStart);
-      if (leftStart >= 0) candidateCols.push(leftStart);
-      for (const col of candidateCols) {
-        const pushed = planPushBlockersAround(row, col, newTiles, groupIgnore);
-        if (pushed) return { mode: 'push', row, col: pushed.col, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
-      }
-
-      const near = findNearestEmptySpotOn(state.board, row, gStart, len, groupIgnore);
-      if (near) return { mode: 'relocate', row: near.row, col: near.col };
-
-      const compacted = compactBoardToMakeSpace(state.board, len, groupIgnore);
-      if (compacted) return { mode: 'compact', row: compacted.spot.row, col: compacted.spot.col, compactedBoard: compacted.board };
-      return null;
-    }
-
-    function findMagneticBoardTarget(clientX, clientY, draggingTiles) {
-      const vpRect = boardViewport.getBoundingClientRect();
-      const rackRect = woodRack.getBoundingClientRect();
-      const maxBottomY = Math.max(vpRect.bottom + 24, rackRect.top + 8);
-      if (clientX < vpRect.left - 24 || clientX > vpRect.right + 24 || clientY < vpRect.top - 24 || clientY > maxBottomY) {
-        return null;
-      }
-
-      const rect = boardGrid.getBoundingClientRect();
-      const len = draggingTiles.length;
-      const isDraggingMade = validateSet(draggingTiles).valid;
-      const ignoreIds = new Set(draggingTiles.map((t) => t.id));
-      const totalGroupW = len * state.cellW;
-      const groupLeftX = clientX - totalGroupW / 2;
-      const fCol = state.viewColStart + (groupLeftX - rect.left) / state.cellW;
-      const fRow = state.viewRowStart + (clientY - rect.top - state.cellH / 2) / state.rowStep;
-      const visMinCol = state.viewColStart;
-      const visMaxCol = Math.max(visMinCol, Math.min(GRID_COLS - len, state.viewColStart + state.viewCols - len));
-      const visMinRow = state.viewRowStart;
-      const visMaxRow = Math.min(GRID_ROWS - 1, state.viewRowStart + state.viewRows - 1);
-
-      function checkAdjacencyCompatible(r, col) {
-        const testRow = state.board[r].map((t) => (t && !ignoreIds.has(t.id) ? t : null));
-        for (let i = 0; i < len; i++) testRow[col + i] = draggingTiles[i];
-        let s = col;
-        while (s > 0 && testRow[s - 1]) s--;
-        let e = col + len - 1;
-        while (e < GRID_COLS - 1 && testRow[e + 1]) e++;
-        const touchesNeighbor = s < col || e > col + len - 1;
-        if (!touchesNeighbor) return { touchesNeighbor: false, compatible: true, validMerge: false };
-        const combined = testRow.slice(s, e + 1);
-        return {
-          touchesNeighbor: true,
-          compatible: canCombineTiles(combined),
-          validMerge: validateSet(combined).valid,
-        };
-      }
-
-      const hoverRowOffset = clientY - rect.top;
-      const hoverRowIdx = Math.floor(hoverRowOffset / state.rowStep);
-      const inTileVerticalBand = hoverRowOffset >= 0 && (hoverRowOffset - hoverRowIdx * state.rowStep) <= state.cellH;
-      const hoverRow = state.viewRowStart + hoverRowIdx;
-      const hoverCol = state.viewColStart + Math.floor((clientX - rect.left) / state.cellW);
-      let hoveringOccupied = false;
-      if (inTileVerticalBand && hoverRow >= 0 && hoverRow < GRID_ROWS && hoverCol >= 0 && hoverCol < GRID_COLS) {
-        const under = state.board[hoverRow][hoverCol];
-        if (under && !ignoreIds.has(under.id)) {
-          hoveringOccupied = true;
-          let gStart = hoverCol;
-          while (gStart > 0 && state.board[hoverRow][gStart - 1] && !ignoreIds.has(state.board[hoverRow][gStart - 1].id)) gStart--;
-          let gEnd = hoverCol;
-          while (gEnd < GRID_COLS - 1 && state.board[hoverRow][gEnd + 1] && !ignoreIds.has(state.board[hoverRow][gEnd + 1].id)) gEnd++;
-          const gTiles = [];
-          for (let c = gStart; c <= gEnd; c++) gTiles.push(state.board[hoverRow][c]);
-
-          const insertOffset = Math.max(1, Math.min(gTiles.length, Math.round((clientX - rect.left) / state.cellW + state.viewColStart - gStart)));
-          const groupInsert = findGroupInsertForGroup(gTiles, draggingTiles, insertOffset);
-          if (groupInsert) {
-            const plan = planGroupInsertPlacement(hoverRow, gStart, gEnd, groupInsert.newTiles, ignoreIds);
-            if (plan) {
-              return {
-                type: 'board-group-insert',
-                row: hoverRow,
-                col: gStart,
-                groupStart: gStart,
-                groupEnd: gEnd,
-                newTiles: groupInsert.newTiles,
-                plan,
-                isMagnet: true,
-                isValidMerge: true,
-              };
-            }
-          }
-
-          const splitResult = findAutoSplitForGroup(gTiles, draggingTiles);
-          if (splitResult) {
-            return { type: 'board-split', row: hoverRow, col: gStart, groupStart: gStart, groupEnd: gEnd, splitResult, isMagnet: true, isValidMerge: true };
-          }
-        }
-      }
-
-      let bestMagnet = null;
-      let bestDist = Infinity;
-      for (let r = 0; r < GRID_ROWS; r++) {
-        if (Math.abs(fRow - r) > MAGNET_ROW_THRESHOLD) continue;
-        let c = 0;
-        while (c < GRID_COLS) {
-          const t = state.board[r][c];
-          if (t && !ignoreIds.has(t.id)) {
-            const gStart = c;
-            const gTiles = [];
-            while (c < GRID_COLS && state.board[r][c] && !ignoreIds.has(state.board[r][c].id)) {
-              gTiles.push(state.board[r][c]);
-              c++;
-            }
-            const gEnd = c - 1;
-
-            const rightCombined = [...gTiles, ...draggingTiles];
-            if (canCombineTiles(rightCombined)) {
-              const rightCol = gEnd + 1;
-              const rightValidMerge = validateSet(rightCombined).valid;
-              if (rightCol + len <= GRID_COLS && Math.abs(fCol - rightCol) <= MAGNET_COL_THRESHOLD) {
-                const dist = Math.hypot(Math.abs(fCol - rightCol), Math.abs(fRow - r) * 1.4);
-                if (isAreaFreeOnBoard(r, rightCol, len, ignoreIds)) {
-                  const adj = checkAdjacencyCompatible(r, rightCol);
-                  if (adj.compatible && dist < bestDist) {
-                    bestDist = dist;
-                    bestMagnet = { row: r, col: rightCol, isValidMerge: adj.validMerge };
-                  } else if (!adj.compatible && dist < bestDist) {
-                    const keepSet = new Set(gTiles.map((x) => x.id));
-                    const pushed = planPushBlockersAround(r, rightCol, draggingTiles, ignoreIds, keepSet);
-                    if (pushed && pushed.pushMoves.length > 0) {
-                      bestDist = dist;
-                      bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
-                    }
-                  }
-                } else if (dist < bestDist) {
-                  const keepSet = new Set(gTiles.map((x) => x.id));
-                  const pushed = planPushBlockersAround(r, rightCol, draggingTiles, ignoreIds, keepSet);
-                  if (pushed && pushed.pushMoves.length > 0) {
-                    bestDist = dist;
-                    bestMagnet = { row: r, col: rightCol, isValidMerge: rightValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
-                  }
-                }
-              }
-            }
-
-            const leftCombined = [...draggingTiles, ...gTiles];
-            if (canCombineTiles(leftCombined)) {
-              const leftCol = gStart - len;
-              const leftValidMerge = validateSet(leftCombined).valid;
-              if (leftCol >= 0 && Math.abs(fCol - leftCol) <= MAGNET_COL_THRESHOLD) {
-                const dist = Math.hypot(Math.abs(fCol - leftCol), Math.abs(fRow - r) * 1.4);
-                if (isAreaFreeOnBoard(r, leftCol, len, ignoreIds)) {
-                  const adj = checkAdjacencyCompatible(r, leftCol);
-                  if (adj.compatible && dist < bestDist) {
-                    bestDist = dist;
-                    bestMagnet = { row: r, col: leftCol, isValidMerge: adj.validMerge };
-                  } else if (!adj.compatible && dist < bestDist) {
-                    const keepSet = new Set(gTiles.map((x) => x.id));
-                    const pushed = planPushBlockersAround(r, leftCol, draggingTiles, ignoreIds, keepSet);
-                    if (pushed && pushed.pushMoves.length > 0) {
-                      bestDist = dist;
-                      bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
-                    }
-                  }
-                } else if (dist < bestDist) {
-                  const keepSet = new Set(gTiles.map((x) => x.id));
-                  const pushed = planPushBlockersAround(r, leftCol, draggingTiles, ignoreIds, keepSet);
-                  if (pushed && pushed.pushMoves.length > 0) {
-                    bestDist = dist;
-                    bestMagnet = { row: r, col: leftCol, isValidMerge: leftValidMerge, pushMoves: pushed.pushMoves, nextBoard: pushed.nextBoard };
-                  }
-                }
-              } else if (leftCol < 0 && Math.abs(fCol - 0) <= MAGNET_COL_THRESHOLD) {
-                const shiftBy = -leftCol;
-                const newEnd = gEnd + shiftBy;
-                if (newEnd < GRID_COLS && isAreaFreeOnBoard(r, gEnd + 1, shiftBy, ignoreIds)) {
-                  const afterRight = newEnd + 1 < GRID_COLS ? state.board[r][newEnd + 1] : null;
-                  if (!afterRight || ignoreIds.has(afterRight.id)) {
-                    const dist = Math.hypot(Math.abs(fCol - 0), Math.abs(fRow - r) * 1.4);
-                    if (dist < bestDist) {
-                      bestDist = dist;
-                      bestMagnet = {
-                        row: r,
-                        col: 0,
-                        isValidMerge: leftValidMerge,
-                        shiftTargetRight: { row: r, gStart, gEnd, shiftBy, tiles: gTiles },
-                      };
-                    }
-                  }
-                }
-              }
-            }
-          } else {
-            c++;
-          }
-        }
-      }
-
-      if (bestMagnet) {
-        return {
-          type: 'board',
-          row: bestMagnet.row,
-          col: bestMagnet.col,
-          isMagnet: true,
-          isValidMerge: bestMagnet.isValidMerge,
-          pushMoves: bestMagnet.pushMoves || null,
-          nextBoard: bestMagnet.nextBoard || null,
-          shiftTargetRight: bestMagnet.shiftTargetRight || null,
-        };
-      }
-
-      if (hoveringOccupied) {
-        const baseCol0 = Math.max(visMinCol, Math.min(visMaxCol, Math.round(fCol)));
-        const baseRow0 = Math.max(visMinRow, Math.min(visMaxRow, Math.round(fRow)));
-
-        if (isDraggingMade) {
-          const relocated = planPlaceMadeWithAutoRelocate(baseRow0, baseCol0, draggingTiles, ignoreIds);
-          if (relocated) {
-            return {
-              type: 'board',
-              row: relocated.row,
-              col: relocated.col,
-              isMagnet: false,
-              isValidMerge: true,
-              pushMoves: relocated.pushMoves,
-              nextBoard: relocated.nextBoard,
-              relocatedExisting: true,
-            };
-          }
-        }
-
-        const nearEmpty = findNearestEmptySpotOn(state.board, baseRow0, baseCol0, len, ignoreIds);
-        if (!nearEmpty) {
-          const compacted = compactBoardToMakeSpace(state.board, len, ignoreIds);
-          if (compacted) {
-            return {
-              type: 'board-compact',
-              row: compacted.spot.row,
-              col: compacted.spot.col,
-              compactedBoard: compacted.board,
-              isMagnet: false,
-              isValidMerge: false,
-            };
-          }
-        }
-        return null;
-      }
-
-      let baseCol = Math.max(visMinCol, Math.min(visMaxCol, Math.round(fCol)));
-      const baseRow = Math.max(visMinRow, Math.min(visMaxRow, Math.round(fRow)));
-
-      if (isDraggingMade && !isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
-        const relocated = planPlaceMadeWithAutoRelocate(baseRow, baseCol, draggingTiles, ignoreIds);
-        if (relocated) {
-          return {
-            type: 'board',
-            row: relocated.row,
-            col: relocated.col,
-            isMagnet: false,
-            isValidMerge: true,
-            pushMoves: relocated.pushMoves,
-            nextBoard: relocated.nextBoard,
-            relocatedExisting: true,
-          };
-        }
-      }
-
-      if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
-        const altCols = [
-          Math.max(0, Math.min(GRID_COLS - len, Math.floor(fCol))),
-          Math.max(0, Math.min(GRID_COLS - len, Math.ceil(fCol))),
-        ];
-        for (const ac of altCols) {
-          if (isAreaFreeOnBoard(baseRow, ac, len, ignoreIds)) {
-            baseCol = ac;
-            break;
-          }
-        }
-      }
-
-      if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
-        const near = findNearestEmptySpotOn(state.board, baseRow, baseCol, len, ignoreIds);
-        if (near && Math.hypot(near.col - baseCol, (near.row - baseRow) * 2) <= 2.5) {
-          return { type: 'board', row: near.row, col: near.col, isMagnet: false, isValidMerge: false, autoMadeSpace: true };
-        }
-        const pushed = planPushBlockersAround(baseRow, baseCol, draggingTiles, ignoreIds);
-        if (pushed) {
-          return {
-            type: 'board',
-            row: pushed.row,
-            col: pushed.col,
-            isMagnet: false,
-            isValidMerge: false,
-            pushMoves: pushed.pushMoves,
-            nextBoard: pushed.nextBoard,
-            autoMadeSpace: true,
-          };
-        }
-        if (near) {
-          return { type: 'board', row: near.row, col: near.col, isMagnet: false, isValidMerge: false, autoMadeSpace: true };
-        }
-        const compacted = compactBoardToMakeSpace(state.board, len, ignoreIds);
-        if (compacted) {
-          return {
-            type: 'board-compact',
-            row: compacted.spot.row,
-            col: compacted.spot.col,
-            compactedBoard: compacted.board,
-            isMagnet: false,
-            isValidMerge: false,
-          };
-        }
-        return null;
-      }
-
-      const adj = checkAdjacencyCompatible(baseRow, baseCol);
-      if (adj.touchesNeighbor && !adj.compatible) {
-        if (isDraggingMade) {
-          const relocated = planPlaceMadeWithAutoRelocate(baseRow, baseCol, draggingTiles, ignoreIds);
-          if (relocated) {
-            return {
-              type: 'board',
-              row: relocated.row,
-              col: relocated.col,
-              isMagnet: false,
-              isValidMerge: true,
-              pushMoves: relocated.pushMoves,
-              nextBoard: relocated.nextBoard,
-              relocatedExisting: true,
-            };
-          }
-        }
-        return { type: 'board-blocked', row: baseRow, col: baseCol, isMagnet: false, isValidMerge: false };
-      }
-
-      return { type: 'board', row: baseRow, col: baseCol, isMagnet: adj.touchesNeighbor, isValidMerge: adj.validMerge };
-    }
-
-    function findRackDropTarget(clientX, clientY) {
-      if (state.isSpectator) return null;
-      const rackRect = woodRack.getBoundingClientRect();
-      if (clientX < rackRect.left - 18 || clientX > rackRect.right + 18 || clientY < rackRect.top + 4 || clientY > rackRect.bottom + 26) {
-        return null;
-      }
-      const slots = woodRack.querySelectorAll('.rack-slot');
-      let bestIdx = -1;
-      let bestDist = Infinity;
-      for (const slot of slots) {
-        const r = slot.getBoundingClientRect();
-        const cx = r.left + r.width / 2;
-        const cy = r.top + r.height / 2;
-        const d = Math.hypot(clientX - cx, clientY - cy);
-        if (d < bestDist) {
-          bestDist = d;
-          bestIdx = parseInt(slot.dataset.rackIdx, 10);
-        }
-      }
-      return { type: 'rack', idx: bestIdx };
-    }
-```
-
----
-
-### [2부 / 2] `// ==================== TILE ELEMENT BUILDER ====================` ~ `</html>` 까지
-
-```javascript
-    // ==================== TILE ELEMENT BUILDER ====================
-    function createClassicJokerSVG(color, sizePx) {
-      const stroke = color === 'red' ? '#c81912' : '#111827';
-      return `
-        <svg width="${sizePx}" height="${sizePx}" viewBox="0 0 40 40" class="relative z-10" style="margin-top:-2%; pointer-events:none;">
-          <circle cx="20" cy="20" r="14.5" fill="#fffdf7" stroke="${stroke}" stroke-width="2.4"/>
-          <path d="M9 12 C12 7, 16 6, 20 8 C24 6, 28 7, 31 12" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="14.5" cy="17.5" r="1.9" fill="${stroke}"/>
-          <circle cx="25.5" cy="17.5" r="1.9" fill="${stroke}"/>
-          <path d="M12.5 14.5 Q14.5 13 16.5 14.5" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M23.5 14.5 Q25.5 13 27.5 14.5" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M19.5 19 L18.5 22.2 L21.2 22.2" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M13 24.5 Q20 30.5 27 24.5" fill="none" stroke="${stroke}" stroke-width="2.1" stroke-linecap="round"/>
-          <path d="M15.5 26 Q20 28.5 24.5 26" fill="none" stroke="${stroke}" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>
-      `;
-    }
-
-    function buildTileElement(tile, width, height, extraClasses = '') {
-      const el = document.createElement('div');
-      el.className = `rk-tile ${extraClasses}`.trim();
-      el.style.width = `${width}px`;
-      el.style.height = `${height}px`;
-      el.dataset.tileId = String(tile.id);
-      el.draggable = false;
-
-      if (tile.isJoker) {
-        el.innerHTML = createClassicJokerSVG(tile.color, Math.round(Math.min(width, height) * 0.68));
-      } else {
-        const numSpan = document.createElement('span');
-        const ratio = tile.num >= 10 ? 0.62 : 0.74;
-        const fontSize = Math.max(12, Math.round(width * ratio));
-        numSpan.className = `rk-tile-num rk-color-${tile.color}`;
-        numSpan.style.fontSize = `${fontSize}px`;
-        if (tile.num >= 10) numSpan.style.letterSpacing = '-0.07em';
-        numSpan.textContent = String(tile.num);
-        el.appendChild(numSpan);
-      }
-
-      if (width >= 26) {
-        const brand = document.createElement('span');
-        brand.className = 'rk-tile-brand';
-        brand.style.fontSize = `${Math.max(5.5, Math.min(8, Math.round(width * 0.165)))}px`;
-        brand.textContent = 'Rummikub';
-        el.appendChild(brand);
-      }
-      return el;
-    }
-
-    // ==================== ORGANIC FULL-TABLE BOARD DIMENSIONS ====================
-    function computeBoardDimensions(lockScale = false) {
-      const rect = boardViewport.getBoundingClientRect();
-      const isNarrow = window.innerWidth < 640;
-      const availW = Math.max(200, rect.width - (isNarrow ? 6 : 16));
-      const availH = Math.max(140, rect.height - (isNarrow ? 6 : 12));
-      const aspect = 1.38;
-      const gapRatio = 0.24;
-
-      if (!lockScale) {
-        let minC = GRID_COLS, maxC = -1, minR = GRID_ROWS, maxR = -1;
-        let tileCount = 0;
-        for (let r = 0; r < GRID_ROWS; r++) {
-          const rowArr = state.board[r];
-          if (!rowArr) continue;
-          for (let c = 0; c < GRID_COLS; c++) {
-            if (rowArr[c]) {
-              tileCount++;
-              if (c < minC) minC = c;
-              if (c > maxC) maxC = c;
-              if (r < minR) minR = r;
-              if (r > maxR) maxR = r;
-            }
-          }
-        }
-
-        const targetTileW = isNarrow ? 30 : 48;
-        const targetTileH = Math.round(targetTileW * aspect);
-        const targetGap = Math.max(10, Math.round(targetTileH * gapRatio));
-
-        const fitCols = Math.min(GRID_COLS, Math.max(isNarrow ? 11 : 16, Math.floor(availW / targetTileW)));
-        const fitRows = Math.min(GRID_ROWS, Math.max(6, Math.floor((availH + targetGap) / (targetTileH + targetGap))));
-
-        if (tileCount === 0) {
-          state.viewCols = fitCols;
-          state.viewRows = fitRows;
-          state.viewColStart = Math.floor((GRID_COLS - state.viewCols) / 2);
-          state.viewRowStart = Math.max(0, GRID_ROWS - state.viewRows);
-        } else {
-          const padCol = 2;
-          const padRow = 1;
-          const spanCols = Math.max(fitCols, (maxC - minC + 1) + padCol * 2);
-          const spanRows = Math.max(fitRows, (maxR - minR + 1) + padRow * 2);
-
-          state.viewCols = Math.min(GRID_COLS, spanCols);
-          state.viewRows = Math.min(GRID_ROWS, spanRows);
-
-          const centerC = (minC + maxC) / 2;
-          let colStart = Math.round(centerC - state.viewCols / 2);
-          colStart = Math.max(0, Math.min(GRID_COLS - state.viewCols, colStart));
-
-          let rowStart = Math.max(0, GRID_ROWS - state.viewRows);
-          if (minR < rowStart) rowStart = minR;
-          if (maxR >= rowStart + state.viewRows) rowStart = Math.max(0, maxR - state.viewRows + 1);
-          if (minC < colStart) colStart = minC;
-          if (maxC >= colStart + state.viewCols) colStart = Math.max(0, maxC - state.viewCols + 1);
-
-          state.viewColStart = colStart;
-          state.viewRowStart = rowStart;
-        }
-      }
-
-      const maxCellW = Math.floor(availW / state.viewCols);
-      const totalRowFactor = state.viewRows + Math.max(0, state.viewRows - 1) * gapRatio;
-      const maxCellH = Math.floor(availH / totalRowFactor);
-      let cellW = Math.min(maxCellW, Math.floor(maxCellH / aspect));
-      cellW = Math.max(12, Math.min(58, cellW));
-      const cellH = Math.max(17, Math.min(maxCellH, Math.round(cellW * aspect)));
-      const rowGap = Math.max(10, Math.round(cellH * gapRatio));
-
-      state.cellW = cellW;
-      state.cellH = cellH;
-      state.rowGap = rowGap;
-      state.rowStep = cellH + rowGap;
-
-      boardGrid.style.width = `${cellW * state.viewCols}px`;
-      boardGrid.style.height = `${cellH * state.viewRows + rowGap * Math.max(0, state.viewRows - 1)}px`;
-    }
-
-    // ==================== RENDERING ====================
-    function getSpectatedPlayerRack(idx) {
-      if (idx < 0 || idx >= state.players.length) return null;
-      const p = state.players[idx];
-      if (!p) return null;
-      if (Array.isArray(p.rack)) return p.rack;
-      if (Array.isArray(p.tiles)) return p.tiles;
-      if (state.spectatorRacks && Array.isArray(state.spectatorRacks[idx])) return state.spectatorRacks[idx];
-      if (state.spectatorRacks && p.sessionId && Array.isArray(state.spectatorRacks[p.sessionId])) return state.spectatorRacks[p.sessionId];
-      return null;
-    }
-
-    function selectSpectatorTarget(idx) {
-      if (!state.isSpectator) return;
-      if (state.spectateTargetIndex === idx) {
-        state.spectateTargetIndex = -1;
-      } else {
-        state.spectateTargetIndex = idx;
-        if (socket && socket.connected) {
-          socket.emit('spectator:inspectPlayer', { playerIndex: idx }, (res) => {
-            if (res && Array.isArray(res.rack)) {
-              state.spectatorRacks[idx] = res.rack;
-              renderAll();
-            }
-          });
-        }
-      }
-      renderAll();
-    }
-
-    function renderAll() {
-      applySpectatorLayoutVisibility();
-      computeBoardDimensions(interact.isDragging);
-      renderPlayersSidebar();
-      renderPoolAndStatus();
-      renderBoard();
-      renderRack();
-      updateControls();
-    }
-
-    function applySpectatorLayoutVisibility() {
-      const inRoomView = state.phase === 'playing' || state.phase === 'gameover';
-      const isHost = state.hostSessionId === sessionId;
-
-      if (inRoomView) {
-        btnLeaveRoom.classList.remove('hidden');
-        btnLeaveRoom.classList.add('flex');
-        btnCloseRoom.classList.toggle('hidden', !isHost);
-        btnCloseRoom.classList.toggle('flex', isHost);
-      } else {
-        btnLeaveRoom.classList.add('hidden');
-        btnLeaveRoom.classList.remove('flex');
-        btnCloseRoom.classList.add('hidden');
-        btnCloseRoom.classList.remove('flex');
-      }
-
+// ... existing code ... -->
       if (state.isSpectator && inRoomView) {
         meldStatusBadge.classList.add('hidden');
         spectatorModeBadge.classList.remove('hidden');
-        const hasInspectTarget = state.spectateTargetIndex >= 0 && Boolean(state.players[state.spectateTargetIndex]);
-        woodRack.classList.toggle('hidden', !hasInspectTarget);
+        woodRack.classList.remove('hidden');
         spectatorBottomBar.classList.remove('hidden');
         spectatorBottomBar.classList.add('flex');
-        btnCloseSpectateRack.classList.toggle('hidden', !hasInspectTarget);
-        if (hasInspectTarget) {
-          const targetPlayer = state.players[state.spectateTargetIndex];
-          spectatorInspectHint.textContent = `· 👁️ ${targetPlayer.name}님의 패 보는 중`;
-        } else {
-          spectatorInspectHint.textContent = '· 플레이어를 클릭하면 패를 볼 수 있어요';
-          woodRackLabel.textContent = 'Rummikub';
-        }
         rightControlsAside.classList.add('hidden');
       } else {
         meldStatusBadge.classList.remove('hidden');
         spectatorModeBadge.classList.add('hidden');
         woodRack.classList.remove('hidden');
-        woodRackLabel.textContent = 'Rummikub';
         spectatorBottomBar.classList.add('hidden');
         spectatorBottomBar.classList.remove('flex');
-        btnCloseSpectateRack.classList.add('hidden');
         rightControlsAside.classList.remove('hidden');
       }
     }
@@ -3182,44 +1413,34 @@
       playersBar.innerHTML = '';
       if (state.players.length === 0) return;
 
-      // 1등(선공)을 맨 위에 배치하고 진행 순서대로 위에서 아래로 자리 배정
-      const n = state.players.length;
-      const startIdx = (typeof state.firstPlayerIndex === 'number' && state.firstPlayerIndex >= 0 && state.firstPlayerIndex < n)
-        ? state.firstPlayerIndex
-        : 0;
-      const ordered = [];
-      for (let offset = 0; offset < n; offset++) {
-        const idx = (startIdx + offset) % n;
-        ordered.push({ p: state.players[idx], idx, turnOrder: offset + 1 });
-      }
+      // 1번(선)부터 순서대로 왼쪽 위에서 아래로 배치
+      const ordered = state.players.map((p, idx) => ({ p, idx }));
 
       const circ = 163.36;
       const timerRatio = Math.max(0, state.timeLeft) / TURN_SECONDS;
       const dashOffset = circ * (1 - timerRatio);
       const ringColor = state.timeLeft <= 8 ? '#f43f5e' : state.timeLeft <= 15 ? '#facc15' : '#4ade80';
 
-      ordered.forEach(({ p, idx, turnOrder }) => {
+      ordered.forEach(({ p, idx }) => {
         const isCurr = idx === state.currentPlayerIndex && state.phase === 'playing';
         const isMe = idx === state.myPlayerIndex;
-        const isSpectated = state.isSpectator && state.spectateTargetIndex === idx;
+        const isSpectatorViewing = state.isSpectator && idx === state.spectatorViewingIdx;
         const count = isMe ? getMyRackTiles().length : (typeof p.tileCount === 'number' ? p.tileCount : 0);
         const av = AVATAR_STYLES[idx % AVATAR_STYLES.length];
 
         const seat = document.createElement('div');
-        seat.className = `flex flex-col items-center gap-1 transition-transform ${
-          state.isSpectator ? 'cursor-pointer hover:scale-105 active:scale-95' : ''
-        } ${isSpectated ? 'scale-105' : ''}`;
+        seat.className = `flex flex-col items-center gap-1 transition-transform ${state.isSpectator ? 'cursor-pointer hover:scale-105 active:scale-95' : ''}`;
         if (state.isSpectator) {
-          seat.title = `${p.name}님의 패 보기 (클릭)`;
-          seat.addEventListener('click', () => selectSpectatorTarget(idx));
+          seat.title = `${p.name}님의 패 보기`;
+          seat.addEventListener('click', () => {
+            state.spectatorViewingIdx = idx;
+            renderPlayersSidebar();
+            renderPoolAndStatus();
+            renderRack();
+          });
         }
-
-        const orderBadgeClass = turnOrder === 1
-          ? 'bg-amber-400 text-slate-950 border-white'
-          : 'bg-slate-900/95 text-blue-100 border-blue-400/60';
-
         seat.innerHTML = `
-          <div class="relative w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''} ${isSpectated ? 'spectate-selected' : ''}">
+          <div class="relative w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''} ${isSpectatorViewing ? 'ring-2 ring-sky-300 shadow-[0_0_16px_rgba(56,189,248,0.85)]' : ''}">
             <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-2xl sm:text-3xl shadow-inner relative overflow-hidden">
               <span class="${isCurr ? 'opacity-40' : ''}">${p.isAI ? av.emoji : '🧑'}</span>
               ${isCurr ? `<span id="activeAvatarTimer" class="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">${Math.max(0, state.timeLeft)}</span>` : ''}
@@ -3230,15 +1451,14 @@
                 <circle id="activeAvatarRing" cx="30" cy="30" r="26" fill="none" stroke="${ringColor}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${dashOffset}" />
               </svg>
             ` : ''}
-            <span class="absolute -top-1 -left-1 px-1.5 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black leading-none shadow ${orderBadgeClass}" title="${turnOrder}번 순서">${turnOrder}번</span>
+            <span class="absolute -top-1 -left-1 px-1.5 h-5 rounded-full ${idx === 0 ? 'bg-amber-400 text-slate-950' : 'bg-slate-900/90 text-blue-100'} border border-white/70 text-[10px] font-black flex items-center justify-center shadow">${idx === 0 ? '1·선' : `${idx + 1}번`}</span>
             ${p.hasMelded ? '<span class="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-amber-400 border border-white text-xs font-black text-slate-950 flex items-center justify-center shadow" title="30점 첫 등록 완료">★</span>' : ''}
-            ${isSpectated ? '<span class="absolute -bottom-1 -left-1 px-1.5 py-0.5 rounded-full bg-sky-400 border border-white text-[9px] font-black text-slate-950 shadow">👁️</span>' : ''}
+            ${isSpectatorViewing ? '<span class="absolute -bottom-1 -left-1 px-1.5 rounded-full bg-sky-400 border border-white text-[9px] font-black text-slate-950 shadow">👀 열람</span>' : ''}
             ${p.hasLeft ? '<span class="absolute -bottom-1 -right-1 px-1 rounded bg-slate-700 text-[9px] font-black text-slate-200 shadow">퇴장</span>' : (!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 px-1 rounded bg-rose-600 text-[9px] font-black text-white shadow">오프라인</span>' : '')}
           </div>
-          <div class="px-2 py-0.5 rounded-lg ${isMe ? 'bg-amber-950/85 border-amber-400/80' : isSpectated ? 'bg-sky-950/90 border-sky-400' : 'bg-slate-950/75 border-blue-400/35'} border text-xs sm:text-sm font-extrabold text-blue-50 flex items-center gap-1 max-w-full shadow">
-            <span class="truncate max-w-[44px] sm:max-w-[62px]">${escapeHtml(p.name)}</span>
-            ${isMe ? '<span class="text-[9px] font-black text-amber-300 shrink-0">(나)</span>' : ''}
-            <span class="text-amber-300 font-black text-sm sm:text-base shrink-0">${count}</span>
+          <div class="px-2 py-0.5 rounded-lg ${isSpectatorViewing ? 'bg-sky-950/90 border-sky-400' : 'bg-slate-950/75 border-blue-400/35'} border text-xs sm:text-sm font-extrabold text-blue-50 flex items-center gap-1.5 max-w-full shadow">
+            <span class="truncate max-w-[48px] sm:max-w-[66px]">${escapeHtml(p.name)}</span>
+            <span class="text-amber-300 font-black text-sm sm:text-base">${count}</span>
           </div>
         `;
         playersBar.appendChild(seat);
@@ -3283,8 +1503,11 @@
 
       if (curr) {
         if (state.isSpectator) {
+          const viewed = state.players[state.spectatorViewingIdx] || state.players[0];
           turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span><span>관전 중 — ${escapeHtml(curr.name)}님의 차례</span>`;
-          spectatorStatusInfo.textContent = `${curr.name}님의 차례 (${Math.max(0, state.timeLeft)}초)`;
+          spectatorStatusInfo.textContent = viewed
+            ? `${viewed.name}님의 패 (${typeof viewed.tileCount === 'number' ? viewed.tileCount : 0}장) · 현재 차례: ${curr.name}`
+            : `${curr.name}님의 차례 (${Math.max(0, state.timeLeft)}초)`;
         } else if (isMyTurn()) {
           turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>내 차례 — ${escapeHtml(evalRes ? evalRes.reason : '')}</span>`;
         } else {
@@ -3292,6 +1515,26 @@
         }
       } else if (state.isSpectator) {
         spectatorStatusInfo.textContent = '경기를 관전 중입니다';
+      }
+
+      if (state.isSpectator && spectatorPlayerTabs) {
+        spectatorPlayerTabs.innerHTML = '';
+        state.players.forEach((p, idx) => {
+          const active = idx === state.spectatorViewingIdx;
+          const tab = document.createElement('button');
+          tab.type = 'button';
+          tab.className = active
+            ? 'px-2 py-0.5 rounded-full bg-sky-400 text-slate-950 text-[10px] font-black shadow transition'
+            : 'px-2 py-0.5 rounded-full bg-slate-900/80 hover:bg-slate-800 border border-sky-400/35 text-sky-200 text-[10px] font-bold transition';
+          tab.textContent = `${idx + 1}.${p.name}`;
+          tab.addEventListener('click', () => {
+            state.spectatorViewingIdx = idx;
+            renderPlayersSidebar();
+            renderPoolAndStatus();
+            renderRack();
+          });
+          spectatorPlayerTabs.appendChild(tab);
+        });
       }
 
       if (!state.isSpectator) {
@@ -3389,76 +1632,27 @@
       rackRow1.innerHTML = '';
       if (state.phase === 'lobby' || state.phase === 'waiting') return;
 
-      // 관전 모드: 선택된 플레이어가 없으면 랙을 표시하지 않음
+      let displayRack;
       if (state.isSpectator) {
-        if (state.spectateTargetIndex < 0 || !state.players[state.spectateTargetIndex]) return;
-        const targetPlayer = state.players[state.spectateTargetIndex];
-        const rawRack = getSpectatedPlayerRack(state.spectateTargetIndex);
-
-        if (!Array.isArray(rawRack)) {
-          woodRackLabel.textContent = `👁️ ${targetPlayer.name}님의 패`;
-          const notice = document.createElement('div');
-          notice.className = 'px-3 py-3 text-xs font-extrabold text-amber-950 text-center';
-          notice.textContent = `${targetPlayer.name}님의 패 정보를 불러오는 중이거나 서버에서 아직 관전자 패를 전송하지 않았습니다.`;
-          rackRow0.appendChild(notice);
-          return;
-        }
-
-        const tilesOnly = rawRack.filter(Boolean);
-        woodRackLabel.textContent = `👁️ ${targetPlayer.name} (${tilesOnly.length}장)`;
-
+        const viewedPlayer = state.players[state.spectatorViewingIdx] || state.players[0];
+        const rawRack = viewedPlayer && Array.isArray(viewedPlayer.rack) ? viewedPlayer.rack : [];
         const minSlots = 20;
-        const neededPerRow = Math.max(10, Math.ceil(tilesOnly.length / 2) + 1);
+        const count = rawRack.filter(Boolean).length;
+        const neededPerRow = Math.max(10, Math.ceil(count / 2) + 2);
         const targetLen = Math.max(minSlots, neededPerRow * 2);
-        let displayRack;
-        if (rawRack.some((x) => x === null)) {
-          displayRack = [...rawRack];
-          while (displayRack.length < targetLen) displayRack.push(null);
-          if (displayRack.length % 2 !== 0) displayRack.push(null);
-        } else {
-          displayRack = Array(targetLen).fill(null);
-          for (let i = 0; i < tilesOnly.length; i++) {
-            if (i < displayRack.length) displayRack[i] = tilesOnly[i];
-            else displayRack.push(tilesOnly[i]);
-          }
-          if (displayRack.length % 2 !== 0) displayRack.push(null);
-        }
-
-        const rowSize = Math.floor(displayRack.length / 2);
-        const isNarrow = window.innerWidth < 640;
-        const splitOffset = (inGameChatOpen && chatDisplayMode === 'split' && window.innerWidth >= 768) ? 320 : 0;
-        const sideSpace = (isNarrow ? 110 : 150) + splitOffset;
-        const availRackW = Math.max(180, window.innerWidth - sideSpace);
-        const maxTileH = Math.max(32, Math.min(62, Math.floor(window.innerHeight * 0.1)));
-        const maxTileWByH = Math.floor(maxTileH / 1.38);
-        const maxTileWByW = Math.floor((availRackW - rowSize * 2 - 16) / rowSize);
-        const tileW = Math.max(18, Math.min(48, maxTileWByW, maxTileWByH));
-        const tileH = Math.round(tileW * 1.38);
-
-        for (let i = 0; i < displayRack.length; i++) {
-          const slot = document.createElement('div');
-          slot.className = 'rack-slot shrink-0';
-          slot.style.width = `${tileW + 1}px`;
-          slot.style.height = `${tileH + 1}px`;
-          const tile = displayRack[i];
-          if (tile) {
-            const el = buildTileElement(tile, tileW, tileH);
-            el.style.cursor = 'default';
-            slot.appendChild(el);
-          }
-          if (i < rowSize) rackRow0.appendChild(slot);
-          else rackRow1.appendChild(slot);
-        }
-        return;
+        displayRack = [...rawRack];
+        while (displayRack.length < targetLen) displayRack.push(null);
+        if (displayRack.length % 2 !== 0) displayRack.push(null);
+      } else {
+        ensureMyRackCapacity();
+        displayRack = state.myRack;
       }
 
-      woodRackLabel.textContent = 'Rummikub';
-      ensureMyRackCapacity();
-      const rowSize = Math.floor(state.myRack.length / 2);
+      const rowSize = Math.floor(displayRack.length / 2);
 
       const isNarrow = window.innerWidth < 640;
       const splitOffset = (inGameChatOpen && chatDisplayMode === 'split' && window.innerWidth >= 768) ? 320 : 0;
-      const sideSpace = (isNarrow ? 164 : 230) + splitOffset;
+      const sideSpace = (state.isSpectator ? (isNarrow ? 94 : 134) : (isNarrow ? 164 : 230)) + splitOffset;
       const availRackW = Math.max(180, window.innerWidth - sideSpace);
       const maxTileH = Math.max(36, Math.min(72, Math.floor(window.innerHeight * 0.115)));
       const maxTileWByH = Math.floor(maxTileH / 1.38);
@@ -3466,28 +1660,32 @@
       const tileW = Math.max(20, Math.min(54, maxTileWByW, maxTileWByH));
       const tileH = Math.round(tileW * 1.38);
 
-      for (let i = 0; i < state.myRack.length; i++) {
+      for (let i = 0; i < displayRack.length; i++) {
         const slot = document.createElement('div');
         slot.className = 'rack-slot shrink-0';
         slot.style.width = `${tileW + 1}px`;
         slot.style.height = `${tileH + 1}px`;
         slot.dataset.rackIdx = String(i);
 
-        const tile = state.myRack[i];
+        const tile = displayRack[i];
         if (tile) {
           const el = buildTileElement(tile, tileW, tileH);
-          const handleDown = (e) => {
-            if (state.phase !== 'playing' || state.isSpectator) return;
-            onTilePointerDown(e, 'rack', tile, { idx: i }, el);
-          };
-          el.addEventListener('pointerdown', handleDown);
-          el.addEventListener('mousedown', (e) => { if (e.button === 0) e.preventDefault(); });
-          el.addEventListener('dragstart', (e) => e.preventDefault());
-          el.addEventListener('contextmenu', (e) => e.preventDefault());
-          slot.addEventListener('pointerdown', (e) => {
-            if (e.target === slot) handleDown(e);
-          });
-          slot.addEventListener('contextmenu', (e) => e.preventDefault());
+          if (state.isSpectator) {
+            el.style.cursor = 'default';
+          } else {
+            const handleDown = (e) => {
+              if (state.phase !== 'playing' || state.isSpectator) return;
+              onTilePointerDown(e, 'rack', tile, { idx: i }, el);
+            };
+            el.addEventListener('pointerdown', handleDown);
+            el.addEventListener('mousedown', (e) => { if (e.button === 0) e.preventDefault(); });
+            el.addEventListener('dragstart', (e) => e.preventDefault());
+            el.addEventListener('contextmenu', (e) => e.preventDefault());
+            slot.addEventListener('pointerdown', (e) => {
+              if (e.target === slot) handleDown(e);
+            });
+            slot.addEventListener('contextmenu', (e) => e.preventDefault());
+          }
           slot.appendChild(el);
         }
 
@@ -4292,7 +2490,7 @@
             for (let i = emptyPos; i > insertAt; i--) state.myRack[i] = state.myRack[i - 1];
             state.myRack[insertAt] = t;
             insertAt++;
-            } else {
+          } else {
             addTileToMyRack(t);
           }
         }
@@ -4448,8 +2646,6 @@
       }
 
       const prevPhase = state.phase;
-      const isNewGameStart = payload.phase === 'playing' && prevPhase !== 'playing';
-
       state.code = payload.code;
       state.phase = payload.phase;
       state.maxPlayers = payload.maxPlayers;
@@ -4471,40 +2667,17 @@
       state.evalState = payload.evalState || null;
       state.gameOverData = payload.gameOverData || null;
 
-      if (typeof payload.firstPlayerIndex === 'number') {
-        state.firstPlayerIndex = payload.firstPlayerIndex;
-      } else if (isNewGameStart) {
-        state.firstPlayerIndex = typeof payload.currentPlayerIndex === 'number' ? payload.currentPlayerIndex : 0;
-      } else if (state.firstPlayerIndex >= state.players.length) {
-        state.firstPlayerIndex = 0;
-      }
-
-      if (payload.spectatorRacks && typeof payload.spectatorRacks === 'object') {
-        state.spectatorRacks = { ...state.spectatorRacks, ...payload.spectatorRacks };
-      } else if (payload.playerRacks && typeof payload.playerRacks === 'object') {
-        state.spectatorRacks = { ...state.spectatorRacks, ...payload.playerRacks };
-      }
-
-      if (isNewGameStart && (prevPhase === 'waiting' || prevPhase === 'gameover')) {
-        const firstP = state.players[state.firstPlayerIndex];
-        if (firstP) {
-          showToast(`🎲 순서 추첨 완료! 1등(선공): ${firstP.name}님`, 'success');
-        }
-      }
-
       if (!isMyTurn() && lifted.active && lifted.originType === 'board') {
         clearLifted();
       }
 
       if (state.isSpectator) {
+        if (typeof state.spectatorViewingIdx !== 'number' || state.spectatorViewingIdx < 0 || state.spectatorViewingIdx >= state.players.length) {
+          state.spectatorViewingIdx = 0;
+        }
         state.myRack = Array(20).fill(null);
         clearLifted();
-        if (state.spectateTargetIndex >= state.players.length) {
-          state.spectateTargetIndex = -1;
-        }
       } else {
-        state.spectateTargetIndex = -1;
-        state.spectatorRacks = {};
         const incomingRack = Array.isArray(payload.myRack) ? payload.myRack : Array(20).fill(null);
         const localIds = state.myRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
         const serverIds = incomingRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
@@ -4601,16 +2774,6 @@
         lastTimerTickAt = Date.now();
         applyServerRoomState(payload);
       });
-      socket.on('spectator:playerRack', (payload) => {
-        if (!state.isSpectator || !payload) return;
-        const idx = typeof payload.playerIndex === 'number' ? payload.playerIndex : -1;
-        if (idx >= 0 && Array.isArray(payload.rack)) {
-          state.spectatorRacks[idx] = payload.rack;
-          if (state.spectateTargetIndex === idx) {
-            renderRack();
-          }
-        }
-      });
       socket.on('room:toast', ({ msg, tone }) => {
         if (msg) showToast(msg, tone || 'info');
       });
@@ -4635,7 +2798,12 @@
         }
         if (state.isSpectator) {
           const curr = state.players[currentPlayerIndex];
-          if (curr) spectatorStatusInfo.textContent = `${curr.name}님의 차례 (${Math.max(0, timeLeft)}초)`;
+          const viewed = state.players[state.spectatorViewingIdx] || state.players[0];
+          if (curr) {
+            spectatorStatusInfo.textContent = viewed
+              ? `${viewed.name}님의 패 (${typeof viewed.tileCount === 'number' ? viewed.tileCount : 0}장) · 현재 차례: ${curr.name} (${Math.max(0, timeLeft)}초)`
+              : `${curr.name}님의 차례 (${Math.max(0, timeLeft)}초)`;
+          }
         }
         if (isMyTurn()) {
           if (timeLeft <= 5 && timeLeft > 0) playTick(true);
@@ -4727,7 +2895,7 @@
           showLobbyError(res.error);
           showToast(res.error, 'error');
         } else if (res && res.isSpectator) {
-          showToast(`방 [${code}]에 관전자 모드로 입장했습니다. 플레이어를 클릭해 패를 확인하세요!`, 'info');
+          showToast(`방 [${code}]에 관전자 모드로 입장했습니다.`, 'info');
         }
       });
     }
@@ -4840,7 +3008,7 @@
     document.getElementById('btnStartRoom').addEventListener('click', () => {
       if (!socket) return;
       ensureAudio();
-      socket.emit('room:start', { fillWithAI: false, randomizeOrder: true }, (res) => {
+      socket.emit('room:start', { fillWithAI: false }, (res) => {
         if (res && res.error) showToast(res.error, 'error');
       });
     });
@@ -4848,14 +3016,9 @@
     document.getElementById('btnStartWithAI').addEventListener('click', () => {
       if (!socket) return;
       ensureAudio();
-      socket.emit('room:start', { fillWithAI: true, randomizeOrder: true }, (res) => {
+      socket.emit('room:start', { fillWithAI: true }, (res) => {
         if (res && res.error) showToast(res.error, 'error');
       });
-    });
-
-    btnCloseSpectateRack.addEventListener('click', () => {
-      state.spectateTargetIndex = -1;
-      renderAll();
     });
 
     function leaveToLobby(emitLeave = true) {
@@ -4873,10 +3036,7 @@
       globalUnreadCount = 0;
       state.code = null;
       state.phase = 'lobby';
-      state.firstPlayerIndex = 0;
       state.isSpectator = false;
-      state.spectateTargetIndex = -1;
-      state.spectatorRacks = {};
       state.spectatorCount = 0;
       state.spectators = [];
       showChatLobbyView();
