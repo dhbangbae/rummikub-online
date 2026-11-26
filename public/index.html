@@ -1067,7 +1067,7 @@
     let lobbyRoomsData = [];
     let clubMessagesData = [];
     let roomMessagesData = [];
-    let activeChatTab = 'room'; // 'room' | 'club'
+    let activeChatTab = 'room';
     let roomChatOpen = false;
     let roomChatSplit = false;
     let roomChatUnread = 0;
@@ -1095,7 +1095,6 @@
       hasBoardChanged: false,
       evalState: null,
       remoteDrag: null,
-      // Dynamic viewport over 22x8 board with generous row gap
       viewColStart: 0,
       viewRowStart: 0,
       viewCols: GRID_COLS,
@@ -1667,7 +1666,6 @@
       return null;
     }
 
-    // Relocate any existing groups overlapping [row, col..col+len-1] or directly touching it so made sets can drop ANYWHERE
     function buildRelocatedBoardForDrop(tiles, targetRow, targetCol) {
       const len = tiles.length;
       if (targetRow < 0 || targetRow >= GRID_ROWS || targetCol < 0 || targetCol + len > GRID_COLS) return null;
@@ -1685,7 +1683,6 @@
       }
       if (removedSpots.length === 1) closeGroupGapsOn(sim, removedSpots);
 
-      // Collect all contiguous groups on targetRow that overlap [targetCol - 1 .. targetCol + len]
       const displaced = [];
       const visitedCols = new Set();
       const scanStart = Math.max(0, targetCol - 1);
@@ -1699,18 +1696,15 @@
         for (const item of grp) sim[item.row][item.col] = null;
       }
 
-      // Place our dropped made set at exact target position
       for (let i = 0; i < len; i++) {
         sim[targetRow][targetCol + i] = tiles[i];
       }
 
       const relocatedIds = new Set();
-      // Place each displaced group at nearest empty spot
       for (const grp of displaced) {
         const gTiles = grp.map((x) => x.tile);
         const spot = findNearestEmptySpotOn(sim, targetRow, grp[0].col, gTiles.length);
         if (!spot) {
-          // Compact fallback: pack all non-dropped groups cleanly around the dropped set
           const otherGroups = getBoardGroups(sim).filter((g) => !g.tiles.some((t) => dragIds.has(t.id)));
           const allOtherTileArrays = [...otherGroups.map((g) => g.tiles), ...displaced.map((d) => d.map((x) => x.tile))];
           const fresh = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
@@ -1777,7 +1771,7 @@
         }
       }
 
-      // 1. Magnetic edge snap (when dragging < 3 or when valid merge)
+      // 1. Magnetic edge snap
       let bestMagnet = null;
       let bestDist = Infinity;
       for (let r = 0; r < GRID_ROWS; r++) {
@@ -1817,7 +1811,7 @@
         }
       }
 
-      // 2. Free placement inside visible board (including right above rack!)
+      // 2. Free placement inside visible board (including right above rack)
       const minVisCol = state.viewColStart;
       const maxVisCol = Math.min(GRID_COLS - len, state.viewColStart + state.viewCols - len);
       const minVisRow = state.viewRowStart;
@@ -1829,7 +1823,7 @@
         return { type: 'board', row: baseRow, col: baseCol, isMagnet: false, isValidMerge: draggingIsMade };
       }
 
-      // 3. Made set dropped onto occupied spot -> auto-relocate existing tiles!
+      // 3. Made set dropped onto occupied spot -> auto-relocate existing tiles
       if (draggingIsMade) {
         return { type: 'board-relocate', row: baseRow, col: baseCol, isMagnet: false, isValidMerge: true };
       }
@@ -1913,7 +1907,7 @@
       const availH = Math.max(150, rect.height - (isNarrow ? 6 : 10));
 
       const aspect = 1.38;
-      const gapRatio = 0.24; // Generous blue felt gap between rows
+      const gapRatio = 0.24;
 
       if (!lockScale) {
         let minC = GRID_COLS, maxC = -1, minR = GRID_ROWS, maxR = -1;
@@ -1932,7 +1926,6 @@
           }
         }
 
-        // Start with comfortable tile size and organically expand columns & rows to fill full screen!
         const targetTileW = isNarrow ? 34 : 48;
         let fitCols = Math.min(GRID_COLS, Math.max(14, Math.floor(availW / targetTileW)));
         const targetTileH = Math.round(targetTileW * aspect);
@@ -1977,7 +1970,6 @@
       const cellH = Math.max(22, Math.round(cellW * aspect));
       const rowGap = Math.max(10, Math.round(cellH * gapRatio));
 
-      // Fill any remaining horizontal/vertical space organically with extra playable columns/rows
       if (!lockScale) {
         const extraCols = Math.min(GRID_COLS, Math.floor(availW / cellW));
         if (extraCols > state.viewCols) {
@@ -2200,7 +2192,6 @@
       boardGrid.appendChild(magnetGhost);
       updateMagnetGhost(interact.snapTarget);
 
-      // Remote player drag preview
       if (state.remoteDrag && state.remoteDrag.active && Array.isArray(state.remoteDrag.tiles)) {
         const rd = state.remoteDrag;
         const wrap = document.createElement('div');
@@ -3492,7 +3483,7 @@
       showChatLobbyView();
     });
 
-    // Timer Watchdog & Visibility Resync (prevents timer freeze after mobile backgrounding)
+    // Timer Watchdog & Visibility Resync
     setInterval(() => {
       if (state.phase === 'playing' && state.code && Date.now() - lastTimerHeartbeat > 3500) {
         lastTimerHeartbeat = Date.now();
