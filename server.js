@@ -358,7 +358,6 @@ function buildRoomPayloadFor(room, targetSessionId) {
     maxPlayers: room.maxPlayers,
     aiDifficulty: room.aiDifficulty || 'pro',
     hostSessionId: room.hostSessionId,
-    firstPlayerIndex: typeof room.firstPlayerIndex === 'number' ? room.firstPlayerIndex : 0,
     currentPlayerIndex: room.currentPlayerIndex,
     poolCount: room.pool.length,
     timeLeft: room.timeLeft,
@@ -377,24 +376,18 @@ function buildRoomPayloadFor(room, targetSessionId) {
     recentAITileIds: Array.from(room.recentAITileIds),
     hasBoardChanged: hasBoardChangedFromSnapshot(room),
     evalState: evalRes,
-    players: room.players.map((p, idx) => {
-      const info = {
-        index: idx,
-        sessionId: p.sessionId,
-        name: p.name,
-        isAI: p.isAI,
-        connected: p.connected,
-        hasLeft: Boolean(p.hasLeft),
-        hasMelded: p.hasMelded,
-        tileCount: getRackTiles(p).length,
-        isHost: p.sessionId === room.hostSessionId,
-      };
-      // 관전자에게만 각 플레이어의 보유 패 전송 (실제 플레이어에게는 전송하지 않음)
-      if (isSpectator) {
-        info.rack = cloneRack(p.rack);
-      }
-      return info;
-    }),
+    players: room.players.map((p, idx) => ({
+      index: idx,
+      sessionId: p.sessionId,
+      name: p.name,
+      isAI: p.isAI,
+      connected: p.connected,
+      hasLeft: Boolean(p.hasLeft),
+      hasMelded: p.hasMelded,
+      tileCount: getRackTiles(p).length,
+      isHost: p.sessionId === room.hostSessionId,
+      rack: isSpectator ? p.rack : undefined,
+    })),
     chatMessages: room.messages || [],
     gameOverData: room.gameOverData || null,
   };
@@ -479,13 +472,6 @@ function closeRoomCompletely(room, message = '방 개설자가 방을 종료했�
   broadcastLobbyUpdate();
 }
 
-function shufflePlayers(players) {
-  for (let i = players.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [players[i], players[j]] = [players[j], players[i]];
-  }
-}
-
 function startGameInRoom(room, fillWithAI = false) {
   clearRoomTimers(room);
 
@@ -519,13 +505,15 @@ function startGameInRoom(room, fillWithAI = false) {
     if (nextHuman) room.hostSessionId = nextHuman.sessionId;
   }
 
-  // 무작위 순서 추첨 (0번이 1등/선공, 왼쪽 위 -> 아래로 순서대로 자리 배정)
-  shufflePlayers(room.players);
+  // 무작위 추첨으로 1번(선) 및 자리 순서 배정 (Fisher-Yates Shuffle)
+  for (let i = room.players.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [room.players[i], room.players[j]] = [room.players[j], room.players[i]];
+  }
 
   room.phase = 'playing';
   room.pool = createDeck();
   room.board = createEmptyBoard();
-  room.firstPlayerIndex = 0;
   room.currentPlayerIndex = 0;
   room.consecutivePasses = 0;
   room.finalRoundJustTriggered = false;
@@ -546,7 +534,7 @@ function startGameInRoom(room, fillWithAI = false) {
 
   startTurn(room);
   io.to(room.code).emit('room:toast', {
-    msg: `🎲 순서 추첨 완료! 1등(선공): ${room.players[0].name}님`,
+    msg: `🎲 무작위 추첨 결과 [${room.players[0].name}]님이 1번(선)으로 배정되었습니다!`,
     tone: 'success',
   });
   return { ok: true };
@@ -1456,6 +1444,7 @@ function solveRecombinationPro(boardGroups, rackTiles, timeBudgetMs = 80) {
     recombined: activeGroups.length > 0,
   };
 }
+
 function executeAITurn(room) {
   const ai = room.players[room.currentPlayerIndex];
   if (!ai || !ai.isAI || room.phase !== 'playing') return;
@@ -1709,7 +1698,6 @@ io.on('connection', (socket) => {
       maxPlayers: maxP,
       aiDifficulty: 'pro',
       hostSessionId: sid,
-      firstPlayerIndex: 0,
       players: [
         {
           sessionId: sid,
@@ -1912,44 +1900,15 @@ io.on('connection', (socket) => {
     cb({ ok: true });
   });
 
-  // 관전자 전용: 특정 플레이어 클릭 시 해당 플레이어의 패 조회
-  socket.on('spectator:inspectPlayer', ({ playerIndex } = {}, cb = () => {}) => {
-    const room = rooms.get(socket.data.roomCode);
-    if (!room) return cb({ error: '방을 찾을 수 없습니다.' });
-    const sid = socket.data.sessionId;
-    const isPlayer = room.players.some((p) => p.sessionId === sid);
-    const isSpec = !isPlayer && (room.spectators || []).some((s) => s.sessionId === sid);
-    if (!isSpec) return cb({ error: '관전자만 이용할 수 있습니다.' });
-
-    const idx = parseInt(playerIndex, 10);
-    if (!Number.isInteger(idx) || idx < 0 || idx >= room.players.length) {
-      return cb({ error: '플레이어를 찾을 수 없습니다.' });
-    }
-    const target = room.players[idx];
-    const rack = cloneRack(target.rack);
-    socket.emit('spectator:playerRack', { playerIndex: idx, rack });
-    cb({ ok: true, playerIndex: idx, rack });
-  });
-
   socket.on('game:syncRack', ({ rack }) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || room.phase !== 'playing') return;
-    const pIdx = room.players.findIndex((p) => p.sessionId === socket.data.sessionId);
-    if (pIdx < 0) return;
-    const player = room.players[pIdx];
+    const player = room.players.find((p) => p.sessionId === socket.data.sessionId);
+    if (!player) return;
 
     const verified = verifyRackOrderOnly(player.rack, rack);
     if (verified) {
       player.rack = verified;
-      // 관전자가 보고 있는 경우 정렬/이동된 패도 실시간 반영
-      for (const s of (room.spectators || [])) {
-        if (s.connected && s.socketId) {
-          io.to(s.socketId).emit('spectator:playerRack', {
-            playerIndex: pIdx,
-            rack: cloneRack(player.rack),
-          });
-        }
-      }
     }
   });
 
@@ -2165,7 +2124,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(code);
     if (!room) return;
 
-    const specIdx = (room.spectators || []).findIndex((s) => s.sessionId === sid && s.socketId === socket.id);
+    const specIdx = (room.spectators || []).findIndex((s) => s.sessionId === sid);
     if (specIdx !== -1) {
       room.spectators.splice(specIdx, 1);
       broadcastRoom(room);
@@ -2174,7 +2133,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const p = room.players.find((x) => x.sessionId === sid && x.socketId === socket.id);
+    const p = room.players.find((x) => x.sessionId === sid);
     if (p) {
       p.connected = false;
       p.socketId = null;
