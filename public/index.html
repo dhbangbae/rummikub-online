@@ -1277,6 +1277,16 @@
 
     // Restore saved nickname
     if (myPlayerName) inputPlayerName.value = myPlayerName;
+
+    let toastTimer = null;
+    function showToast(msg, tone = 'info') {
+      toastInner.textContent = msg;
+      toastInner.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-2xl border ' + (
+        tone === 'error'
+          ? 'bg-red-950/95 border-red-400/70 text-red-100'
+          : tone === 'success'
+            ? 'bg-emerald-950/95 border-emerald-400/70 text-emerald-100'
+            : 'bg-slate-950/90 border-blue-400/60 text-white'
       );
       toastBox.classList.remove('opacity-0', 'translate-y-2');
       toastBox.classList.add('opacity-100', 'translate-y-0');
@@ -1469,6 +1479,236 @@
       } else {
         chatLobbyModal.classList.add('hidden');
         nicknameModal.classList.remove('hidden');
+      }
+    }
+
+    // ==================== CORE TURN, RACK & SET HELPERS ====================
+    function isMyTurn() {
+      return state.phase === 'playing' && state.myPlayerIndex >= 0 && state.currentPlayerIndex === state.myPlayerIndex;
+    }
+
+    function getMyRackTiles() {
+      return state.myRack.filter(Boolean);
+    }
+
+    function ensureMyRackCapacity() {
+      const minSlots = 20;
+      const count = getMyRackTiles().length;
+      const neededPerRow = Math.max(10, Math.ceil(count / 2) + 2);
+      const targetLen = Math.max(minSlots, neededPerRow * 2);
+      while (state.myRack.length < targetLen) state.myRack.push(null);
+      if (state.myRack.length % 2 !== 0) state.myRack.push(null);
+    }
+
+    function addTileToMyRack(tile) {
+      ensureMyRackCapacity();
+      const emptyIdx = state.myRack.indexOf(null);
+      if (emptyIdx !== -1) state.myRack[emptyIdx] = tile;
+      else state.myRack.push(tile);
+    }
+
+    function validateSet(tiles) {
+      if (!tiles || tiles.length < 3) return { valid: false, type: null, points: 0 };
+      const nonJokers = tiles.filter((t) => !t.isJoker);
+      if (nonJokers.length === 0) return { valid: false, type: null, points: 0 };
+
+      if (tiles.length <= 4) {
+        const num = nonJokers[0].num;
+        const allSameNum = nonJokers.every((t) => t.num === num);
+        const colorSet = new Set(nonJokers.map((t) => t.color));
+        if (allSameNum && colorSet.size === nonJokers.length) {
+          return { valid: true, type: 'group', points: num * tiles.length };
+        }
+      }
+
+      if (tiles.length <= 13) {
+        const color = nonJokers[0].color;
+        if (nonJokers.every((t) => t.color === color)) {
+          const firstIdx = tiles.findIndex((t) => !t.isJoker);
+          const startNum = tiles[firstIdx].num - firstIdx;
+          if (startNum >= 1 && startNum + tiles.length - 1 <= 13) {
+            let ok = true;
+            let pts = 0;
+            for (let i = 0; i < tiles.length; i++) {
+              const expected = startNum + i;
+              if (!tiles[i].isJoker && tiles[i].num !== expected) {
+                ok = false;
+                break;
+              }
+              pts += expected;
+            }
+            if (ok) return { valid: true, type: 'run', points: pts };
+          }
+        }
+      }
+      return { valid: false, type: null, points: 0 };
+    }
+
+    function canCombineTiles(tiles) {
+      if (!tiles || tiles.length < 2) return false;
+      const nonJokers = tiles.filter((t) => !t.isJoker);
+      if (nonJokers.length === 0) return tiles.length <= 4;
+
+      if (tiles.length <= 4) {
+        const num = nonJokers[0].num;
+        const allSameNum = nonJokers.every((t) => t.num === num);
+        const colorSet = new Set(nonJokers.map((t) => t.color));
+        if (allSameNum && colorSet.size === nonJokers.length) return true;
+      }
+
+      if (tiles.length <= 13) {
+        const color = nonJokers[0].color;
+        if (nonJokers.every((t) => t.color === color)) {
+          const firstIdx = tiles.findIndex((t) => !t.isJoker);
+          const startNum = tiles[firstIdx].num - firstIdx;
+          if (startNum >= 1 && startNum + tiles.length - 1 <= 13) {
+            let ok = true;
+            for (let i = 0; i < tiles.length; i++) {
+              if (!tiles[i].isJoker && tiles[i].num !== startNum + i) {
+                ok = false;
+                break;
+              }
+            }
+            if (ok) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function getBoardGroups(board = state.board) {
+      const groups = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        const rowArr = board[r];
+        if (!rowArr) continue;
+        let c = 0;
+        while (c < GRID_COLS) {
+          if (rowArr[c]) {
+            const startCol = c;
+            const tiles = [];
+            while (c < GRID_COLS && rowArr[c]) {
+              tiles.push(rowArr[c]);
+              c++;
+            }
+            const check = validateSet(tiles);
+            groups.push({ row: r, startCol, endCol: c - 1, tiles, ...check });
+          } else {
+            c++;
+          }
+        }
+      }
+      return groups;
+    }
+
+    function extractMadeRuns(tiles) {
+      const used = new Set();
+      const runs = [];
+      for (const color of COLORS) {
+        let found = true;
+        while (found) {
+          found = false;
+          const byNum = new Map();
+          for (const t of tiles) {
+            if (!t.isJoker && !used.has(t.id) && t.color === color && !byNum.has(t.num)) byNum.set(t.num, t);
+          }
+          let n = 1;
+          while (n <= 13) {
+            if (byNum.has(n)) {
+              const seq = [];
+              while (n <= 13 && byNum.has(n)) {
+                seq.push(byNum.get(n));
+                n++;
+              }
+              if (seq.length >= 3) {
+                seq.forEach((t) => used.add(t.id));
+                runs.push(seq);
+                found = true;
+                break;
+              }
+            } else {
+              n++;
+            }
+          }
+        }
+      }
+      runs.sort((a, b) => (a[0].color !== b[0].color ? COLOR_ORDER[a[0].color] - COLOR_ORDER[b[0].color] : a[0].num - b[0].num));
+      return { made: runs, remaining: tiles.filter((t) => !used.has(t.id)) };
+    }
+
+    function extractMadeGroups(tiles) {
+      const used = new Set();
+      const groups = [];
+      for (let num = 1; num <= 13; num++) {
+        let found = true;
+        while (found) {
+          found = false;
+          const picked = [];
+          const seen = new Set();
+          for (const color of COLORS) {
+            const m = tiles.find((t) => !t.isJoker && !used.has(t.id) && t.num === num && t.color === color && !seen.has(color));
+            if (m) {
+              seen.add(color);
+              picked.push(m);
+            }
+          }
+          if (picked.length >= 3) {
+            picked.forEach((t) => used.add(t.id));
+            groups.push(picked);
+            found = true;
+          }
+        }
+      }
+      return { made: groups, remaining: tiles.filter((t) => !used.has(t.id)) };
+    }
+
+    function compareByRun(a, b) {
+      if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
+      if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
+      if (a.num !== b.num) return a.num - b.num;
+      return a.id - b.id;
+    }
+
+    function compareByGroup(a, b) {
+      if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
+      if (a.num !== b.num) return a.num - b.num;
+      if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
+      return a.id - b.id;
+    }
+
+    function placeSortedGroupsOnMyRack(madeSets, remainingTiles) {
+      const totalTiles = madeSets.reduce((sum, s) => sum + s.length, 0) + remainingTiles.length;
+      const gapCount = madeSets.length;
+      const slotsPerRow = Math.max(10, Math.ceil((totalTiles + gapCount + 1) / 2) + 1);
+      const rack = Array(slotsPerRow * 2).fill(null);
+
+      let row = 0;
+      let col = 0;
+      for (const set of madeSets) {
+        if (col > 0 && col + set.length > slotsPerRow && row === 0) { row = 1; col = 0; }
+        for (const t of set) {
+          if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
+          const idx = row * slotsPerRow + col;
+          if (idx < rack.length) rack[idx] = t;
+          else rack.push(t);
+          col++;
+        }
+        col++;
+        if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
+      }
+      for (const t of remainingTiles) {
+        if (col >= slotsPerRow && row === 0) { row = 1; col = 0; }
+        const idx = row * slotsPerRow + col;
+        if (idx < rack.length) rack[idx] = t;
+        else rack.push(t);
+        col++;
+      }
+      if (rack.length % 2 !== 0) rack.push(null);
+      state.myRack = rack;
+    }
+
+    function syncRackOrderToServer() {
+      if (socket && state.phase === 'playing') {
+        socket.emit('game:syncRack', { rack: state.myRack });
       }
     }
 
