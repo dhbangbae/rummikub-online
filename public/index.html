@@ -536,7 +536,7 @@
 
   <!-- TOP UTILITY BAR -->
   <div class="relative z-30 flex items-center justify-between px-2 sm:px-3 pt-1.5 pb-0.5 pointer-events-none">
-    <div class="flex items-center gap-1.5 pointer-events-auto flex-wrap">
+    <div id="topLeftHudBadges" class="flex items-center gap-1.5 pointer-events-auto flex-wrap transition-all">
       <div id="roomCodeBadgeWrap" class="hidden items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/65 border border-amber-400/60 text-amber-300 text-[11px] font-black backdrop-blur-sm">
         <span class="opacity-75">방</span>
         <span id="hudRoomCode" class="tracking-widest">----</span>
@@ -565,18 +565,18 @@
       <button id="btnHelp" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-blue-100 hover:brightness-110 transition" title="규칙 및 조작법">
         규칙
       </button>
-      <button id="btnLobby" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-200 hover:brightness-110 transition" title="방 나가기 / 대화방">
-        « 대화방
+      <button id="btnLobby" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-200 hover:brightness-110 transition" title="방 나가기 / 루미큐브 클럽">
+        « 클럽
       </button>
     </div>
   </div>
 
-  <!-- FLOATING CHAT RESTORE FAB (대기실/게임 중 채팅창을 접어두었을 때 항상 우측 하단에 표시) -->
+  <!-- FLOATING CHAT RESTORE FAB (대기실/게임 중 채팅창을 접어두었을 때 좌측 상단에 표시하여 우측 조작 버튼과 간섭 방지) -->
   <button id="btnFloatingChatFab" type="button"
-    class="hidden fixed bottom-3 right-3 z-[60] px-3.5 py-2 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-xs shadow-2xl border border-white/60 items-center gap-1.5 transition active:scale-95">
+    class="hidden fixed top-1.5 left-2 sm:left-3 z-[60] px-3 py-1 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-[11px] sm:text-xs shadow-xl border border-white/60 items-center gap-1.5 transition active:scale-95">
     <span>💬</span>
     <span>채팅 열기</span>
-    <span id="floatingChatFabBadge" class="hidden min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black items-center justify-center leading-none">0</span>
+    <span id="floatingChatFabBadge" class="hidden min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-black items-center justify-center leading-none">0</span>
   </button>
 
   <!-- IN-GAME CHAT PEEK BUBBLE (채팅창이 접혀 있을 때 새 메시지 미리보기) -->
@@ -613,7 +613,7 @@
           <span id="tabRoomUnread" class="hidden px-1 rounded-full bg-rose-600 text-white text-[9px] font-black">0</span>
         </button>
         <button id="tabGlobalChat" type="button" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-950/80 text-blue-200 hover:bg-blue-900 border border-blue-500/30 transition flex items-center gap-1">
-          <span>전체 대화방</span>
+          <span>루미큐브 클럽</span>
           <span id="tabGlobalUnread" class="hidden px-1 rounded-full bg-rose-600 text-white text-[9px] font-black">0</span>
         </button>
       </div>
@@ -734,7 +734,7 @@
       <div class="px-6 py-6 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 text-center">
         <div class="text-xs font-bold text-amber-300 tracking-widest uppercase">The Original · Online</div>
         <h1 class="text-3xl sm:text-4xl font-black text-white tracking-tight mt-0.5" style="font-family: 'Playfair Display', Georgia, serif;">Rummikub</h1>
-        <p class="text-xs text-blue-200/85 mt-1.5">닉네임을 입력하고 대화방에 입장하세요</p>
+        <p class="text-xs text-blue-200/85 mt-1.5">닉네임을 입력하고 루미큐브 클럽에 입장하세요</p>
         <div class="text-[11px] font-extrabold text-amber-200/90 mt-1">by 달님,별님</div>
       </div>
 
@@ -747,7 +747,7 @@
 
         <button id="btnEnterLobby" type="button"
           class="w-full py-3.5 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-black text-base shadow-xl transition active:scale-[0.99]">
-          💬 대화방 입장하기
+          💬 루미큐브 클럽 입장하기
         </button>
 
         <a href="https://open.kakao.com/o/gZIi5bZg" target="_blank" rel="noopener noreferrer"
@@ -761,14 +761,14 @@
     </div>
   </div>
 
-  <!-- 2. CHAT LOBBY MODAL (대화방) -->
+  <!-- 2. CHAT LOBBY MODAL (루미큐브 클럽) -->
   <div id="chatLobbyModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
     <div class="w-full max-w-2xl h-[92vh] sm:h-[84vh] max-h-[760px] rounded-2xl bg-[#0b2759] border border-blue-400/50 shadow-2xl overflow-hidden flex flex-col">
       <!-- Chat Lobby Header -->
       <div class="px-4 py-3 bg-gradient-to-b from-[#17468f] to-[#0d2e69] border-b border-blue-400/35 flex items-center justify-between gap-2 shrink-0">
         <div class="min-w-0">
           <div class="flex items-center gap-2">
-            <h2 class="text-base sm:text-lg font-black text-white truncate">💬 루미큐브 대화방</h2>
+            <h2 class="text-base sm:text-lg font-black text-white truncate">💬 루미큐브 클럽</h2>
             <span id="lobbyOnlineBadge" class="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-emerald-200 text-[11px] font-extrabold shrink-0">접속 1명</span>
           </div>
           <div class="flex items-center gap-2 text-[11px] text-blue-200/85 mt-0.5">
@@ -800,7 +800,7 @@
       <!-- Quick Action & Chat Input Footer -->
       <div class="p-3 bg-[#091f4a] border-t border-blue-400/30 space-y-2 shrink-0">
         <form id="lobbyChatForm" class="flex items-center gap-2">
-          <input id="inputChatMessage" type="text" maxlength="200" autocomplete="off" placeholder="대화방에 메시지를 입력하세요..."
+          <input id="inputChatMessage" type="text" maxlength="200" autocomplete="off" placeholder="루미큐브 클럽에 메시지를 입력하세요..."
             class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/75 border border-blue-500/50 text-white text-sm font-medium focus:outline-none focus:border-amber-400" />
           <button id="btnSendChat" type="submit"
             class="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm shadow transition active:scale-95 shrink-0">
@@ -828,7 +828,7 @@
           <h2 class="text-base font-black text-white">게임 메뉴</h2>
         </div>
         <button id="btnCloseGameMenu" type="button" class="px-3 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 border border-blue-400/35 text-xs font-bold text-blue-100">
-          ← 대화방으로
+          ← 클럽으로
         </button>
       </div>
 
@@ -935,7 +935,7 @@
             <li><b>우측 789 / 777 버튼</b>: 상대 턴에도 언제든 정렬 가능하며, 받침대 안에서 직접 드래그해 수동 정렬도 가능합니다.</li>
             <li><b>조건 충족 연속 선택</b>: 타일을 누르고 있으면 <b>0.25초마다</b> 같은 색 연속 숫자나 다른 색 같은 숫자 조건을 만족하는 뒤쪽 패만 선택됩니다.</li>
             <li><b>끼워넣기 · 좌우 자동 밀기 · 자동 분리</b>: 같은 숫자 3개 사이에 4번째 숫자를 끼워 넣거나, 판 위 패의 왼쪽·오른쪽에 붙일 때 공간이 부족하면 주변 패가 자동으로 자리를 만들어 줍니다. 긴 런 중간에 패를 끼워 넣으면 <b>✂ 자동 분리</b>됩니다.</li>
-            <li><b>상시 채팅 (플로팅 / 화면 분할)</b>: 대기실과 게임 중에도 채팅창 상단을 드래그해 원하는 곳에 두거나 <b>◫ 분할</b> 버튼으로 우측에 고정해 방 채팅과 전체 대화방을 오가며 대화할 수 있습니다.</li>
+            <li><b>상시 채팅 (플로팅 / 화면 분할)</b>: 대기실과 게임 중에도 채팅창 상단을 드래그해 원하는 곳에 두거나 <b>◫ 분할</b> 버튼으로 우측에 고정해 방 채팅과 루미큐브 클럽을 오가며 대화할 수 있습니다.</li>
           </ul>
         </div>
         <div class="pt-2 border-t border-blue-400/25 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -975,7 +975,7 @@
           다시 하기
         </button>
         <button id="btnBackToLobby" type="button" class="px-4 py-3 rounded-xl bg-blue-900 hover:bg-blue-800 text-blue-100 font-bold text-sm transition">
-          대화방
+          클럽
         </button>
       </div>
     </div>
@@ -1389,6 +1389,7 @@
     const rackRow0 = document.getElementById('rackRow0');
     const rackRow1 = document.getElementById('rackRow1');
     const playersBar = document.getElementById('playersBar');
+    const topLeftHudBadges = document.getElementById('topLeftHudBadges');
     const roomCodeBadgeWrap = document.getElementById('roomCodeBadgeWrap');
     const hudRoomCode = document.getElementById('hudRoomCode');
     const poolCountBadge = document.getElementById('poolCountBadge');
@@ -1653,7 +1654,7 @@
       if (lobbyChatHistory.length === 0) {
         lobbyChatMessages.appendChild(createChatBubbleNode({
           type: 'system',
-          text: '대화방에 오신 것을 환영합니다! 자유롭게 채팅하고 우측 상단 [🎮 게임 메뉴]에서 방을 만들거나 참여해 보세요.',
+          text: '루미큐브 클럽에 오신 것을 환영합니다! 자유롭게 채팅하고 우측 상단 [🎮 게임 메뉴]에서 방을 만들거나 참여해 보세요.',
         }, false));
       } else {
         lobbyChatHistory.forEach((m) => lobbyChatMessages.appendChild(createChatBubbleNode(m, true)));
@@ -1661,12 +1662,23 @@
       lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
     }
 
+    function setFloatingChatFabVisible(visible) {
+      if (visible) {
+        btnFloatingChatFab.classList.remove('hidden');
+        btnFloatingChatFab.classList.add('flex');
+        if (topLeftHudBadges) topLeftHudBadges.classList.add('pl-[94px]', 'sm:pl-[104px]');
+      } else {
+        btnFloatingChatFab.classList.add('hidden');
+        btnFloatingChatFab.classList.remove('flex');
+        if (topLeftHudBadges) topLeftHudBadges.classList.remove('pl-[94px]', 'sm:pl-[104px]');
+      }
+    }
+
     function showChatLobbyView() {
       closePersistentChat(false);
       btnInGameChat.classList.add('hidden');
       btnInGameChat.classList.remove('flex');
-      btnFloatingChatFab.classList.add('hidden');
-      btnFloatingChatFab.classList.remove('flex');
+      setFloatingChatFabVisible(false);
       hideInGameChatPeek();
 
       waitingModal.classList.add('hidden');
@@ -1749,7 +1761,7 @@
         empty.className = 'text-center text-[11px] text-blue-200/65 py-6';
         empty.textContent = activeChatTab === 'room'
           ? '대기실과 게임 중에도 방 친구들과 실시간으로 대화해 보세요!'
-          : '전체 대화방 메시지가 여기에 표시됩니다.';
+          : '루미큐브 클럽 메시지가 여기에 표시됩니다.';
         inGameChatMessages.appendChild(empty);
       } else {
         list.forEach((m) => inGameChatMessages.appendChild(createChatBubbleNode(m, false)));
@@ -1768,7 +1780,7 @@
         globalUnreadCount = 0;
         tabGlobalChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-400 text-slate-950 transition flex items-center gap-1';
         tabRoomChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-950/80 text-blue-200 hover:bg-blue-900 border border-blue-500/30 transition flex items-center gap-1';
-        inputInGameChat.placeholder = '전체 대화방 입력...';
+        inputInGameChat.placeholder = '루미큐브 클럽 입력...';
       }
       updateInGameChatBadges();
       renderActiveChatTabMessages();
@@ -1813,8 +1825,7 @@
       inGameChatRoomTag.textContent = state.code || '----';
       inGameChatPanel.classList.remove('hidden');
       inGameChatPanel.classList.add('flex');
-      btnFloatingChatFab.classList.add('hidden');
-      btnFloatingChatFab.classList.remove('flex');
+      setFloatingChatFabVisible(false);
 
       if (chatDisplayMode === 'split') {
         document.body.classList.add('chat-split-open');
@@ -1837,8 +1848,9 @@
       inGameChatPanel.classList.remove('flex');
       document.body.classList.remove('chat-split-open');
       if (state.phase !== 'lobby') {
-        btnFloatingChatFab.classList.remove('hidden');
-        btnFloatingChatFab.classList.add('flex');
+        setFloatingChatFabVisible(true);
+      } else {
+        setFloatingChatFabVisible(false);
       }
       updateInGameChatBadges();
       if (state.phase === 'playing' || state.phase === 'gameover') {
@@ -4177,8 +4189,7 @@
       if (!inGameChatUserMinimized) {
         openPersistentChat(false);
       } else {
-        btnFloatingChatFab.classList.remove('hidden');
-        btnFloatingChatFab.classList.add('flex');
+        setFloatingChatFabVisible(true);
         updateInGameChatBadges();
       }
     }
@@ -4379,7 +4390,7 @@
       }
       socket.emit('lobby:enter', { name, sessionId }, (res) => {
         if (!res || !res.ok) {
-          showNicknameError((res && res.error) || '대화방 입장에 실패했습니다.');
+          showNicknameError((res && res.error) || '루미큐브 클럽 입장에 실패했습니다.');
           return;
         }
         hasEnteredLobby = true;
