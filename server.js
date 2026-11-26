@@ -50,6 +50,7 @@ function getPublicRoomsList() {
       hostName: host ? host.name : '방장',
       playerCount: room.players.length,
       maxPlayers: room.maxPlayers,
+      spectatorCount: (room.spectators || []).length,
       createdAt: room.createdAt || 0,
     });
   }
@@ -346,6 +347,7 @@ function sortInitialRack(player) {
 function buildRoomPayloadFor(room, targetSessionId) {
   const meIdx = room.players.findIndex((p) => p.sessionId === targetSessionId);
   const me = meIdx >= 0 ? room.players[meIdx] : null;
+  const isSpectator = meIdx === -1 && (room.spectators || []).some((s) => s.sessionId === targetSessionId);
   const evalRes = room.phase === 'playing' ? evaluateTurnState(room) : null;
 
   return {
@@ -360,6 +362,11 @@ function buildRoomPayloadFor(room, targetSessionId) {
     finalRoundTurnsLeft: room.finalRoundTurnsLeft,
     finalRoundTriggerName: room.finalRoundTriggerName,
     board: room.board,
+    isSpectator,
+    spectators: (room.spectators || []).map((s) => ({
+      sessionId: s.sessionId,
+      name: s.name,
+    })),
     myPlayerIndex: meIdx,
     myRack: me ? me.rack : [],
     playedFromRackIds: Array.from(room.playedFromRackIds),
@@ -375,10 +382,49 @@ function buildRoomPayloadFor(room, targetSessionId) {
       hasMelded: p.hasMelded,
       tileCount: getRackTiles(p).length,
       isHost: p.sessionId === room.hostSessionId,
+      rack: isSpectator ? getRackTiles(p) : undefined,
     })),
     chatMessages: room.messages || [],
     gameOverData: room.gameOverData || null,
   };
+}
+
+function broadcastRoom(room, toast = null) {
+  for (const p of room.players) {
+    if (!p.isAI && p.socketId) {
+      const sock = io.sockets.sockets.get(p.socketId);
+      if (sock) {
+        sock.emit('room:state', buildRoomPayloadFor(room, p.sessionId));
+        if (toast) sock.emit('room:toast', toast);
+      }
+    }
+  }
+  for (const s of room.spectators || []) {
+    if (s.socketId) {
+      const sock = io.sockets.sockets.get(s.socketId);
+      if (sock) {
+        sock.emit('room:state', buildRoomPayloadFor(room, s.sessionId));
+        if (toast) sock.emit('room:toast', toast);
+      }
+    }
+  }
+}
+
+function pushRoomSystemMessage(room, text) {
+  const entry = {
+    id: `rsys-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type: 'system',
+    senderName: '시스템',
+    sessionId: null,
+    text,
+    timestamp: Date.now(),
+  };
+  if (!Array.isArray(room.messages)) room.messages = [];
+  room.messages.push(entry);
+  if (room.messages.length > 60) {
+    room.messages.splice(0, room.messages.length - 60);
+  }
+  io.to(room.code).emit('room:chatMessage', entry);
 }
 
 function broadcastRoom(room, toast = null) {
@@ -1640,6 +1686,7 @@ io.on('connection', (socket) => {
           rack: [],
         },
       ],
+      spectators: [],
       pool: [],
       board: createEmptyBoard(),
       currentPlayerIndex: 0,
@@ -1672,36 +1719,36 @@ io.on('connection', (socket) => {
     broadcastLobbyUpdate();
   });
 
-  socket.on('room:join', ({ code, name, sessionId }, cb = () => {}) => {
-    const cleanCode = String(code || '').replace(/\D/g, '').slice(0, 4);
-    const room = rooms.get(cleanCode);
-    if (!room) return cb({ error: '존재하지 않는 4자리 방 코드입니다.' });
+    if (room.phase !== 'waiting' || room.players.length >= room.maxPlayers) {
+      if (!Array.isArray(room.spectators)) room.spectators = [];
+      const existingSpec = room.spectators.find((s) => s.sessionId === sid);
+      if (existingSpec) {
+        existingSpec.socketId = socket.id;
+        existingSpec.name = cleanName;
+      } else {
+        room.spectators.push({
+          sessionId: sid,
+          socketId: socket.id,
+          name: cleanName,
+        });
+      }
 
-    const cleanName = String(name || socket.data.playerName || '플레이어').trim().slice(0, 14) || '플레이어';
-    const sid = String(sessionId || socket.id);
-
-    const existing = room.players.find((p) => p.sessionId === sid);
-    if (existing) {
-      existing.socketId = socket.id;
-      existing.connected = true;
-      if (cleanName) existing.name = cleanName;
       if (room.cleanupTimeout) {
         clearTimeout(room.cleanupTimeout);
         room.cleanupTimeout = null;
       }
       socket.data.roomCode = cleanCode;
       socket.data.sessionId = sid;
+      socket.data.playerName = cleanName;
+      socket.data.isSpectator = true;
       socket.join(cleanCode);
-      cb({ ok: true, code: cleanCode, reconnected: true });
-      broadcastRoom(room, { msg: `${existing.name}님이 다시 접속했습니다.`, tone: 'info' });
-      return;
-    }
 
-    if (room.phase !== 'waiting') {
-      return cb({ error: '이미 게임이 진행 중인 방입니다.' });
-    }
-    if (room.players.length >= room.maxPlayers) {
-      return cb({ error: '방 정원이 가득 찼습니다.' });
+      cb({ ok: true, code: cleanCode, spectator: true });
+      const notice = `👁️ ${cleanName}님이 관전자로 입장했습니다.`;
+      pushRoomSystemMessage(room, notice);
+      broadcastRoom(room, { msg: notice, tone: 'info' });
+      broadcastLobbyUpdate();
+      return;
     }
 
     room.players.push({
@@ -1748,10 +1795,16 @@ io.on('connection', (socket) => {
     if (!room) return cb({ error: '방을 찾을 수 없습니다.' });
 
     const player = room.players.find((p) => p.sessionId === sid);
-    if (!player) return cb({ error: '방 참가자가 아닙니다.' });
+    const spectator = !player ? (room.spectators || []).find((s) => s.sessionId === sid) : null;
+    if (!player && !spectator) return cb({ error: '방 참가자가 아닙니다.' });
 
-    player.socketId = socket.id;
-    player.connected = true;
+    if (player) {
+      player.socketId = socket.id;
+      player.connected = true;
+    } else if (spectator) {
+      spectator.socketId = socket.id;
+      socket.data.isSpectator = true;
+    }
     socket.data.roomCode = targetCode;
     socket.data.sessionId = sid;
     socket.join(targetCode);
@@ -1845,12 +1898,14 @@ io.on('connection', (socket) => {
 
     const sid = socket.data.sessionId || socket.id;
     const player = room.players.find((p) => p.sessionId === sid);
-    const senderName = (player && player.name) || socket.data.playerName || '플레이어';
+    const spectator = !player ? (room.spectators || []).find((s) => s.sessionId === sid) : null;
+    const senderName = (player && player.name) || (spectator && spectator.name) || socket.data.playerName || '플레이어';
 
     const entry = {
       id: `rmsg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       senderName,
       sessionId: sid,
+      isSpectator: Boolean(spectator),
       text: cleanText,
       timestamp: Date.now(),
     };
@@ -1923,6 +1978,18 @@ io.on('connection', (socket) => {
     const room = rooms.get(code);
     if (!room) return;
 
+    const specIdx = (room.spectators || []).findIndex((s) => s.sessionId === sid);
+    if (specIdx !== -1) {
+      const [spec] = room.spectators.splice(specIdx, 1);
+      socket.data.isSpectator = false;
+      const notice = `👁️ ${spec.name}님이 관전을 종료했습니다.`;
+      pushRoomSystemMessage(room, notice);
+      broadcastRoom(room, { msg: notice, tone: 'info' });
+      broadcastLobbyUpdate();
+      cleanupRoomIfEmpty(code);
+      return;
+    }
+
     if (room.phase === 'waiting') {
       room.players = room.players.filter((p) => p.sessionId !== sid);
       if (room.players.length === 0) {
@@ -1957,6 +2024,17 @@ io.on('connection', (socket) => {
     if (!code) return;
     const room = rooms.get(code);
     if (!room) return;
+
+    const specIdx = (room.spectators || []).findIndex((s) => s.sessionId === sid);
+    if (specIdx !== -1) {
+      const [spec] = room.spectators.splice(specIdx, 1);
+      const notice = `👁️ ${spec.name}님이 관전을 종료했습니다.`;
+      pushRoomSystemMessage(room, notice);
+      broadcastRoom(room, { msg: notice, tone: 'info' });
+      broadcastLobbyUpdate();
+      cleanupRoomIfEmpty(code);
+      return;
+    }
 
     const p = room.players.find((x) => x.sessionId === sid);
     if (p) {
