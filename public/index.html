@@ -446,8 +446,9 @@
 
     #inGameChatPanel.chat-mode-floating {
       position: fixed;
-      bottom: 12px;
+      top: 44px;
       right: 12px;
+      bottom: auto;
       width: min(330px, calc(100vw - 20px));
       height: min(340px, 46vh);
       border-radius: 16px;
@@ -562,22 +563,8 @@
       <button id="btnSound" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-xs font-bold text-blue-100 hover:brightness-110 transition" title="효과음 켜기/끄기">
         <span id="soundIcon">🔊</span>
       </button>
-      <button id="btnHelp" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-blue-100 hover:brightness-110 transition" title="규칙 및 조작법">
-        규칙
-      </button>
-      <button id="btnLobby" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-200 hover:brightness-110 transition" title="방 나가기 / 루미큐브 클럽">
-        « 클럽
-      </button>
     </div>
   </div>
-
-  <!-- FLOATING CHAT RESTORE FAB (대기실/게임 중 채팅창을 접어두었을 때 좌측 상단에 표시하여 우측 조작 버튼과 간섭 방지) -->
-  <button id="btnFloatingChatFab" type="button"
-    class="hidden fixed top-1.5 left-2 sm:left-3 z-[60] px-3 py-1 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-[11px] sm:text-xs shadow-xl border border-white/60 items-center gap-1.5 transition active:scale-95">
-    <span>💬</span>
-    <span>채팅 열기</span>
-    <span id="floatingChatFabBadge" class="hidden min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-black items-center justify-center leading-none">0</span>
-  </button>
 
   <!-- IN-GAME CHAT PEEK BUBBLE (채팅창이 접혀 있을 때 새 메시지 미리보기) -->
   <button id="inGameChatPeek" type="button"
@@ -808,7 +795,7 @@
           </button>
         </form>
         <div class="flex items-center justify-between gap-2 text-[11px]">
-          <button id="btnLobbyHelp" type="button" class="text-blue-200/85 hover:text-white font-bold underline">📖 규칙 &amp; 조작법</button>
+        <div class="flex items-center justify-end gap-2 text-[11px]">
           <a href="https://open.kakao.com/o/gZIi5bZg" target="_blank" rel="noopener noreferrer"
             class="px-2.5 py-1 rounded-lg bg-[#FEE500] hover:bg-[#f6dc00] text-[#191919] font-black text-[11px] flex items-center gap-1 shadow">
             <span>💬</span>
@@ -908,44 +895,6 @@
         <button id="btnLeaveWaiting" type="button" class="w-full py-2 rounded-xl bg-blue-950/80 hover:bg-blue-900 border border-blue-700/60 text-blue-200 font-bold text-xs transition">
           방 나가기
         </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- RULES & HELP MODAL -->
-  <div id="helpModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="w-full max-w-lg max-h-[85vh] flex flex-col rounded-2xl bg-[#0b2759] border border-blue-400/50 shadow-2xl overflow-hidden">
-      <div class="flex items-center justify-between px-5 py-3.5 border-b border-blue-400/30">
-        <div>
-          <h2 class="text-base font-black text-white">루미큐브 규칙 &amp; 조작법</h2>
-          <div class="text-[11px] font-bold text-amber-300/90 mt-0.5">by 달님,별님</div>
-        </div>
-        <button id="btnCloseHelp" type="button" class="px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 text-xs font-bold text-blue-100">닫기</button>
-      </div>
-      <div class="p-5 overflow-y-auto custom-scroll space-y-3 text-xs sm:text-sm text-blue-100/90 leading-relaxed">
-        <div>
-          <h3 class="font-extrabold text-amber-300 mb-1">1. 승리 조건 &amp; 첫 등록 (30점)</h3>
-          <p>받침대의 모든 타일을 가장 먼저 내려놓으면 승리합니다. 첫 등록 시에는 내 패만으로 합계 <b>30점 이상</b>의 유효한 세트(<b>789</b> 연속 런 또는 <b>777</b> 같은 숫자 그룹)를 내려놓아야 합니다.</p>
-          <p class="mt-1">첫 등록 전 30점 미만이나 미완성 패를 내려놓은 채 40초가 지나면 패를 즉시 자동 회수하고 <b>1장</b>을 받습니다. 첫 등록 이후에는 미완성 패가 남았을 때만 회수 + 페널티 <b>3장</b>을 받습니다.</p>
-          <p class="mt-1">더미가 모두 소진되면 다음 사람부터 한 바퀴(각 최대 40초) 돌고, <b>마지막 카드를 뽑은 사람</b>이 차례를 마치면 남은 패 합계로 점수와 등수를 계산합니다.</p>
-        </div>
-        <div>
-          <h3 class="font-extrabold text-amber-300 mb-1">2. 스마트 조작 &amp; 채팅</h3>
-          <ul class="list-disc pl-5 space-y-1">
-            <li><b>우측 789 / 777 버튼</b>: 상대 턴에도 언제든 정렬 가능하며, 받침대 안에서 직접 드래그해 수동 정렬도 가능합니다.</li>
-            <li><b>조건 충족 연속 선택</b>: 타일을 누르고 있으면 <b>0.25초마다</b> 같은 색 연속 숫자나 다른 색 같은 숫자 조건을 만족하는 뒤쪽 패만 선택됩니다.</li>
-            <li><b>끼워넣기 · 좌우 자동 밀기 · 자동 분리</b>: 같은 숫자 3개 사이에 4번째 숫자를 끼워 넣거나, 판 위 패의 왼쪽·오른쪽에 붙일 때 공간이 부족하면 주변 패가 자동으로 자리를 만들어 줍니다. 긴 런 중간에 패를 끼워 넣으면 <b>✂ 자동 분리</b>됩니다.</li>
-            <li><b>상시 채팅 (플로팅 / 화면 분할)</b>: 대기실과 게임 중에도 채팅창 상단을 드래그해 원하는 곳에 두거나 <b>◫ 분할</b> 버튼으로 우측에 고정해 방 채팅과 루미큐브 클럽을 오가며 대화할 수 있습니다.</li>
-          </ul>
-        </div>
-        <div class="pt-2 border-t border-blue-400/25 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div class="text-xs font-bold text-amber-200/90">Made with ❤️ by 달님,별님</div>
-          <a href="https://open.kakao.com/o/gZIi5bZg" target="_blank" rel="noopener noreferrer"
-            class="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#FEE500] hover:bg-[#f6dc00] text-[#191919] font-black text-xs shadow transition flex items-center justify-center gap-1.5">
-            <span>💬</span>
-            <span>오픈 카톡방 참여하기</span>
-          </a>
-        </div>
       </div>
     </div>
   </div>
@@ -1434,14 +1383,11 @@
     const waitingPlayersList = document.getElementById('waitingPlayersList');
     const hostStartControls = document.getElementById('hostStartControls');
     const guestWaitMsg = document.getElementById('guestWaitMsg');
-    const helpModal = document.getElementById('helpModal');
     const gameOverModal = document.getElementById('gameOverModal');
 
     // Persistent Chat DOM
     const btnInGameChat = document.getElementById('btnInGameChat');
     const inGameChatBadge = document.getElementById('inGameChatBadge');
-    const btnFloatingChatFab = document.getElementById('btnFloatingChatFab');
-    const floatingChatFabBadge = document.getElementById('floatingChatFabBadge');
     const inGameChatPanel = document.getElementById('inGameChatPanel');
     const inGameChatHeader = document.getElementById('inGameChatHeader');
     const btnToggleChatMode = document.getElementById('btnToggleChatMode');
@@ -1662,23 +1608,10 @@
       lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
     }
 
-    function setFloatingChatFabVisible(visible) {
-      if (visible) {
-        btnFloatingChatFab.classList.remove('hidden');
-        btnFloatingChatFab.classList.add('flex');
-        if (topLeftHudBadges) topLeftHudBadges.classList.add('pl-[94px]', 'sm:pl-[104px]');
-      } else {
-        btnFloatingChatFab.classList.add('hidden');
-        btnFloatingChatFab.classList.remove('flex');
-        if (topLeftHudBadges) topLeftHudBadges.classList.remove('pl-[94px]', 'sm:pl-[104px]');
-      }
-    }
-
     function showChatLobbyView() {
       closePersistentChat(false);
       btnInGameChat.classList.add('hidden');
       btnInGameChat.classList.remove('flex');
-      setFloatingChatFabVisible(false);
       hideInGameChatPeek();
 
       waitingModal.classList.add('hidden');
@@ -1710,14 +1643,9 @@
         inGameChatBadge.textContent = label;
         inGameChatBadge.classList.remove('hidden');
         inGameChatBadge.classList.add('flex');
-        floatingChatFabBadge.textContent = label;
-        floatingChatFabBadge.classList.remove('hidden');
-        floatingChatFabBadge.classList.add('flex');
       } else {
         inGameChatBadge.classList.add('hidden');
         inGameChatBadge.classList.remove('flex');
-        floatingChatFabBadge.classList.add('hidden');
-        floatingChatFabBadge.classList.remove('flex');
       }
 
       if (roomUnreadCount > 0 && !(inGameChatOpen && activeChatTab === 'room')) {
@@ -1825,7 +1753,6 @@
       inGameChatRoomTag.textContent = state.code || '----';
       inGameChatPanel.classList.remove('hidden');
       inGameChatPanel.classList.add('flex');
-      setFloatingChatFabVisible(false);
 
       if (chatDisplayMode === 'split') {
         document.body.classList.add('chat-split-open');
@@ -1847,11 +1774,6 @@
       inGameChatPanel.classList.add('hidden');
       inGameChatPanel.classList.remove('flex');
       document.body.classList.remove('chat-split-open');
-      if (state.phase !== 'lobby') {
-        setFloatingChatFabVisible(true);
-      } else {
-        setFloatingChatFabVisible(false);
-      }
       updateInGameChatBadges();
       if (state.phase === 'playing' || state.phase === 'gameover') {
         requestAnimationFrame(() => {
@@ -4189,7 +4111,6 @@
       if (!inGameChatUserMinimized) {
         openPersistentChat(false);
       } else {
-        setFloatingChatFabVisible(true);
         updateInGameChatBadges();
       }
     }
@@ -4482,10 +4403,6 @@
       });
     });
 
-    document.getElementById('btnLobbyHelp').addEventListener('click', () => {
-      helpModal.classList.remove('hidden');
-    });
-
     document.getElementById('btnCreateRoom').addEventListener('click', () => {
       if (!socket) {
         showLobbyError('서버 연결이 필요합니다.');
@@ -4555,7 +4472,6 @@
 
     // Persistent Chat Controls
     btnInGameChat.addEventListener('click', togglePersistentChat);
-    btnFloatingChatFab.addEventListener('click', () => openPersistentChat(true));
     document.getElementById('btnCloseInGameChat').addEventListener('click', () => closePersistentChat(true));
     btnToggleChatMode.addEventListener('click', () => {
       applyChatDisplayMode(chatDisplayMode === 'floating' ? 'split' : 'floating');
@@ -4580,7 +4496,6 @@
     });
 
     document.getElementById('btnLeaveWaiting').addEventListener('click', leaveToLobby);
-    document.getElementById('btnLobby').addEventListener('click', leaveToLobby);
     document.getElementById('btnBackToLobby').addEventListener('click', leaveToLobby);
 
     document.getElementById('btnPlayAgain').addEventListener('click', () => {
@@ -4591,8 +4506,6 @@
       });
     });
 
-    document.getElementById('btnHelp').addEventListener('click', () => helpModal.classList.remove('hidden'));
-    document.getElementById('btnCloseHelp').addEventListener('click', () => helpModal.classList.add('hidden'));
     document.getElementById('btnSound').addEventListener('click', () => {
       soundEnabled = !soundEnabled;
       document.getElementById('soundIcon').textContent = soundEnabled ? '🔊' : '🔇';
@@ -4621,7 +4534,6 @@
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         clearLifted();
-        helpModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
       }
     });
