@@ -1062,7 +1062,7 @@ io.on('connection', (socket) => {
     lobbyUsers.set(socket.id, { sessionId: sid, name: cleanName, socketId: socket.id });
 
     if (!prev) {
-      pushLobbySystemMessage(`${cleanName}님이 대화방에 입장했습니다.`);
+      pushLobbySystemMessage(`${cleanName}님이 루미큐브 클럽에 입장했습니다.`);
     } else if (prev.name !== cleanName) {
       pushLobbySystemMessage(`${prev.name}님이 닉네임을 ${cleanName}(으)로 변경했습니다.`);
     }
