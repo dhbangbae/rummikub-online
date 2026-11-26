@@ -9,22 +9,14 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*' },
-  pingInterval: 15000,
+  pingInterval: 20000,
   pingTimeout: 25000,
 });
 
-// Serve static client files from ./public
+const PORT = process.env.PORT || 3000;
+
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Health check endpoint for Render
-app.get('/health', (_req, res) => {
-  res.status(200).json({ ok: true, uptime: process.uptime() });
-});
-
-// Fallback to index.html
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/health', (_req, res) => res.status(200).json({ ok: true }));
 
 // ==================== CONSTANTS ====================
 const COLORS = ['black', 'red', 'blue', 'orange'];
@@ -33,16 +25,70 @@ const GRID_COLS = 22;
 const GRID_ROWS = 8;
 const TURN_SECONDS = 40;
 const AI_NAMES = ['Congo', 'Daphne', 'Vera'];
-const MAX_CHAT_HISTORY = 60;
-const ENDED_ROOM_TTL_MS = 10 * 60 * 1000;
 
-// ==================== GLOBAL STATE ====================
-// Map<roomCode, Room>
-const rooms = new Map();
-// Map<sessionId, { sessionId, name, socketIds: Set<string> }>
-const lobbyUsers = new Map();
-// Array<{ type, senderName?, sessionId?, text, roomCode?, timestamp }>
-const lobbyMessages = [];
+const rooms = new Map(); // code -> room
+const lobbyUsers = new Map(); // socket.id -> { sessionId, name, socketId }
+const lobbyMessages = []; // recent chat & system messages (max 60)
+const MAX_LOBBY_MESSAGES = 60;
+
+// ==================== LOBBY CHAT & ROOM LIST HELPERS ====================
+function getLobbyUsersList() {
+  const bySid = new Map();
+  for (const u of lobbyUsers.values()) {
+    bySid.set(u.sessionId, { sessionId: u.sessionId, name: u.name });
+  }
+  return Array.from(bySid.values());
+}
+
+function getPublicRoomsList() {
+  const list = [];
+  for (const room of rooms.values()) {
+    const host = room.players.find((p) => p.sessionId === room.hostSessionId) || room.players[0];
+    const spectatorCount = (room.spectators || []).filter((s) => s.connected).length;
+    list.push({
+      code: room.code,
+      phase: room.phase,
+      hostName: host ? host.name : '방장',
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+      spectatorCount,
+      createdAt: room.createdAt || 0,
+    });
+  }
+  list.sort((a, b) => {
+    if (a.phase === 'waiting' && b.phase !== 'waiting') return -1;
+    if (a.phase !== 'waiting' && b.phase === 'waiting') return 1;
+    return b.createdAt - a.createdAt;
+  });
+  return list;
+}
+
+function broadcastLobbyUpdate() {
+  io.to('lobby').emit('lobby:update', {
+    users: getLobbyUsersList(),
+    rooms: getPublicRoomsList(),
+  });
+}
+
+function pushLobbyMessage(entry) {
+  lobbyMessages.push(entry);
+  if (lobbyMessages.length > MAX_LOBBY_MESSAGES) {
+    lobbyMessages.splice(0, lobbyMessages.length - MAX_LOBBY_MESSAGES);
+  }
+  io.to('lobby').emit('lobby:chatMessage', entry);
+}
+
+function pushLobbySystemMessage(text, roomCode = null) {
+  pushLobbyMessage({
+    id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type: 'system',
+    senderName: '시스템',
+    sessionId: null,
+    text,
+    roomCode,
+    timestamp: Date.now(),
+  });
+}
 
 // ==================== DECK & BOARD HELPERS ====================
 function createDeck() {
@@ -58,7 +104,6 @@ function createDeck() {
   tiles.push({ id: id++, color: 'red', num: 0, isJoker: true });
   tiles.push({ id: id++, color: 'black', num: 0, isJoker: true });
 
-  // Fisher-Yates shuffle
   for (let i = tiles.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
@@ -70,23 +115,23 @@ function createEmptyBoard() {
   return Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
 }
 
-function cloneBoard(board) {
-  return board.map((row) => row.map((t) => (t ? { ...t } : null)));
+function cloneBoard(b) {
+  return b.map((row) => row.map((t) => (t ? { ...t } : null)));
 }
 
-function cloneRack(rack) {
-  return rack.map((t) => (t ? { ...t } : null));
+function cloneRack(r) {
+  return r.map((t) => (t ? { ...t } : null));
 }
 
 function getRackTiles(player) {
-  return (player.rack || []).filter(Boolean);
+  return player.rack.filter(Boolean);
 }
 
 function ensureRackCapacity(player) {
-  if (!Array.isArray(player.rack)) player.rack = Array(20).fill(null);
+  const minSlots = 20;
   const count = getRackTiles(player).length;
   const neededPerRow = Math.max(10, Math.ceil(count / 2) + 2);
-  const targetLen = Math.max(20, neededPerRow * 2);
+  const targetLen = Math.max(minSlots, neededPerRow * 2);
   while (player.rack.length < targetLen) player.rack.push(null);
   if (player.rack.length % 2 !== 0) player.rack.push(null);
 }
@@ -105,25 +150,17 @@ function drawTileFromPool(room, player) {
   if (room.pool.length === 0 && room.finalRoundTurnsLeft === null && !room.finalRoundJustTriggered) {
     room.finalRoundJustTriggered = true;
     room.finalRoundTriggerName = player.name;
+    room.finalRoundTriggerSessionId = player.sessionId;
   }
   return tile;
 }
 
 function generateRoomCode() {
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let tries = 0; tries < 200; tries++) {
     const code = String(Math.floor(1000 + Math.random() * 9000));
     if (!rooms.has(code)) return code;
   }
-  return String(Date.now()).slice(-4);
-}
-
-function sanitizeName(raw) {
-  const clean = String(raw || '').trim().slice(0, 14);
-  return clean || '플레이어';
-}
-
-function sanitizeChatText(raw) {
-  return String(raw || '').trim().slice(0, 200);
+  return String(Math.floor(1000 + Math.random() * 9000));
 }
 
 // ==================== RUMMIKUB VALIDATION ====================
@@ -132,7 +169,6 @@ function validateSet(tiles) {
   const nonJokers = tiles.filter((t) => !t.isJoker);
   if (nonJokers.length === 0) return { valid: false, type: null, points: 0 };
 
-  // Group: 3~4 tiles of the same number and distinct colors
   if (tiles.length <= 4) {
     const num = nonJokers[0].num;
     const allSameNum = nonJokers.every((t) => t.num === num);
@@ -142,7 +178,6 @@ function validateSet(tiles) {
     }
   }
 
-  // Run: 3~13 tiles of the same color in strict ascending order
   if (tiles.length <= 13) {
     const color = nonJokers[0].color;
     if (nonJokers.every((t) => t.color === color)) {
@@ -163,7 +198,6 @@ function validateSet(tiles) {
       }
     }
   }
-
   return { valid: false, type: null, points: 0 };
 }
 
@@ -227,6 +261,7 @@ function evaluateTurnState(room) {
       if (room.turnSnapshot.board[r][c]) snapBoardIds.add(room.turnSnapshot.board[r][c].id);
     }
   }
+
   for (const id of snapBoardIds) {
     if (!currentBoardIds.has(id)) {
       return { canConfirm: false, playedCount, allValid: false, meldPoints: 0, reason: '바닥 타일이 누락되었습니다.' };
@@ -236,7 +271,6 @@ function evaluateTurnState(room) {
   const groups = getBoardGroups(room.board);
   const allValid = groups.every((g) => g.valid);
 
-  // Player has not played any rack tile yet: if board sets are all valid, allow drawing (+) keeping moved tiles
   if (playedCount === 0) {
     return {
       canConfirm: false,
@@ -294,146 +328,99 @@ function calcRackPenalty(player) {
   return getRackTiles(player).reduce((acc, t) => acc + (t.isJoker ? 30 : t.num), 0);
 }
 
-// ==================== INITIAL RACK SORT FOR NEW GAME ====================
-function compareByRun(a, b) {
-  if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
-  if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
-  if (a.num !== b.num) return a.num - b.num;
-  return a.id - b.id;
-}
-
-function sortPlayerRackInitial(player) {
-  const tiles = getRackTiles(player).sort(compareByRun);
+// ==================== INITIAL RACK SORT ====================
+function sortInitialRack(player) {
+  const tiles = getRackTiles(player);
+  tiles.sort((a, b) => {
+    if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
+    if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
+    if (a.num !== b.num) return a.num - b.num;
+    return a.id - b.id;
+  });
   const rack = Array(20).fill(null);
-  for (let i = 0; i < tiles.length; i++) rack[i] = tiles[i];
+  tiles.forEach((t, idx) => {
+    rack[idx] = t;
+  });
   player.rack = rack;
 }
 
-// ==================== LOBBY & ROOM BROADCASTING ====================
-function getLobbyUsersSnapshot() {
-  return Array.from(lobbyUsers.values()).map((u) => ({
-    sessionId: u.sessionId,
-    name: u.name,
-  }));
-}
-
-function getLobbyRoomsSnapshot() {
-  const list = [];
-  for (const room of rooms.values()) {
-    const host = room.players.find((p) => p.sessionId === room.hostSessionId) || room.players[0];
-    list.push({
-      code: room.code,
-      hostName: host ? host.name : room.hostName || '방장',
-      phase: room.phase,
-      maxPlayers: room.maxPlayers,
-      playerCount: room.players.length,
-      spectatorCount: room.spectators.length,
-      createdAt: room.createdAt,
-    });
-  }
-  const rank = { waiting: 0, playing: 1, gameover: 2, ended: 3 };
-  list.sort((a, b) => {
-    const ra = rank[a.phase] ?? 9;
-    const rb = rank[b.phase] ?? 9;
-    if (ra !== rb) return ra - rb;
-    return b.createdAt - a.createdAt;
-  });
-  return list;
-}
-
-function broadcastLobbyUpdate() {
-  io.emit('lobby:update', {
-    users: getLobbyUsersSnapshot(),
-    rooms: getLobbyRoomsSnapshot(),
-  });
-}
-
-function pushLobbyMessage(entry) {
-  lobbyMessages.push(entry);
-  if (lobbyMessages.length > MAX_CHAT_HISTORY) lobbyMessages.shift();
-  io.emit('lobby:chatMessage', entry);
-}
-
-function pushRoomMessage(room, entry) {
-  room.chatMessages.push(entry);
-  if (room.chatMessages.length > MAX_CHAT_HISTORY) room.chatMessages.shift();
-  io.to(room.code).emit('room:chatMessage', entry);
-}
-
-function buildPersonalizedRoomState(room, recipientSessionId) {
-  const myPlayerIndex = room.players.findIndex((p) => !p.isAI && p.sessionId === recipientSessionId);
-  const isSpectator = myPlayerIndex === -1;
-  const me = myPlayerIndex >= 0 ? room.players[myPlayerIndex] : null;
-  const evalState = room.phase === 'playing' ? evaluateTurnState(room) : null;
-
-  const boardIds = new Set();
-  for (let r = 0; r < GRID_ROWS; r++) {
-    for (let c = 0; c < GRID_COLS; c++) {
-      if (room.board[r][c]) boardIds.add(room.board[r][c].id);
-    }
-  }
-
-  const isCurrTurnRecipient = myPlayerIndex >= 0 && myPlayerIndex === room.currentPlayerIndex;
-  const visiblePlayedIds = isCurrTurnRecipient
-    ? [...room.playedFromRackIds]
-    : [...room.playedFromRackIds].filter((id) => boardIds.has(id));
+// ==================== STATE BROADCASTING ====================
+function buildRoomPayloadFor(room, targetSessionId) {
+  const meIdx = room.players.findIndex((p) => p.sessionId === targetSessionId);
+  const me = meIdx >= 0 ? room.players[meIdx] : null;
+  const spectators = room.spectators || [];
+  const isSpectator = meIdx === -1 && spectators.some((s) => s.sessionId === targetSessionId);
+  const evalRes = room.phase === 'playing' ? evaluateTurnState(room) : null;
 
   return {
     code: room.code,
     phase: room.phase,
     maxPlayers: room.maxPlayers,
+    aiDifficulty: room.aiDifficulty || 'pro',
     hostSessionId: room.hostSessionId,
-    isSpectator,
-    spectators: room.spectators.map((s) => ({ sessionId: s.sessionId, name: s.name })),
-    players: room.players.map((p) => {
-      const base = {
-        name: p.name,
-        isAI: p.isAI,
-        isHost: p.sessionId === room.hostSessionId,
-        connected: p.isAI ? true : p.connected,
-        hasMelded: p.hasMelded,
-        tileCount: getRackTiles(p).length,
-      };
-      // Spectators can see every player's hand in real time
-      if (isSpectator) {
-        base.rack = getRackTiles(p);
-      }
-      return base;
-    }),
-    myPlayerIndex,
     currentPlayerIndex: room.currentPlayerIndex,
     poolCount: room.pool.length,
     timeLeft: room.timeLeft,
     finalRoundTurnsLeft: room.finalRoundTurnsLeft,
     finalRoundTriggerName: room.finalRoundTriggerName,
     board: room.board,
+    myPlayerIndex: meIdx,
+    isSpectator,
+    spectatorCount: spectators.filter((s) => s.connected).length,
+    spectators: spectators.filter((s) => s.connected).map((s) => ({
+      sessionId: s.sessionId,
+      name: s.name,
+    })),
     myRack: me ? me.rack : [],
-    playedFromRackIds: visiblePlayedIds,
-    recentAITileIds: [...room.recentAITileIds],
+    playedFromRackIds: Array.from(room.playedFromRackIds),
+    recentAITileIds: Array.from(room.recentAITileIds),
     hasBoardChanged: hasBoardChangedFromSnapshot(room),
-    evalState,
-    chatMessages: room.chatMessages,
-    gameOverData: room.gameOverData,
+    evalState: evalRes,
+    players: room.players.map((p, idx) => ({
+      index: idx,
+      sessionId: p.sessionId,
+      name: p.name,
+      isAI: p.isAI,
+      connected: p.connected,
+      hasLeft: Boolean(p.hasLeft),
+      hasMelded: p.hasMelded,
+      tileCount: getRackTiles(p).length,
+      isHost: p.sessionId === room.hostSessionId,
+    })),
+    chatMessages: room.messages || [],
+    gameOverData: room.gameOverData || null,
   };
 }
 
-function broadcastRoom(room) {
-  if (!room || room.phase === 'ended') return;
+function broadcastRoom(room, toast = null) {
   for (const p of room.players) {
     if (!p.isAI && p.socketId) {
       const sock = io.sockets.sockets.get(p.socketId);
-      if (sock) sock.emit('room:state', buildPersonalizedRoomState(room, p.sessionId));
+      if (sock) {
+        sock.emit('room:state', buildRoomPayloadFor(room, p.sessionId));
+        if (toast) sock.emit('room:toast', toast);
+      }
     }
   }
-  for (const s of room.spectators) {
+  for (const s of (room.spectators || [])) {
     if (s.socketId) {
       const sock = io.sockets.sockets.get(s.socketId);
-      if (sock) sock.emit('room:state', buildPersonalizedRoomState(room, s.sessionId));
+      if (sock) {
+        sock.emit('room:state', buildRoomPayloadFor(room, s.sessionId));
+        if (toast) sock.emit('room:toast', toast);
+      }
     }
   }
 }
 
-// ==================== TURN & TIMER MANAGEMENT (FREEZE-PROOF) ====================
+function broadcastTimer(room) {
+  io.to(room.code).emit('game:timer', {
+    timeLeft: room.timeLeft,
+    currentPlayerIndex: room.currentPlayerIndex,
+  });
+}
+
+// ==================== TURN & TIMER ENGINE ====================
 function clearRoomTimers(room) {
   if (room.timerInterval) {
     clearInterval(room.timerInterval);
@@ -443,39 +430,107 @@ function clearRoomTimers(room) {
     clearTimeout(room.aiTimeout);
     room.aiTimeout = null;
   }
+  if (Array.isArray(room.aiStepTimeouts)) {
+    room.aiStepTimeouts.forEach((t) => clearTimeout(t));
+    room.aiStepTimeouts = [];
+  }
 }
 
-function startGameInRoom(room) {
+function closeRoomCompletely(room, message = '방 개설자가 방을 종료했습니다.') {
+  if (!room) return;
   clearRoomTimers(room);
+  if (room.cleanupTimeout) {
+    clearTimeout(room.cleanupTimeout);
+    room.cleanupTimeout = null;
+  }
+
+  const code = room.code;
+  io.to(code).emit('room:closed', { message });
+
+  for (const p of room.players) {
+    if (p.socketId) {
+      const sock = io.sockets.sockets.get(p.socketId);
+      if (sock) {
+        sock.leave(code);
+        sock.data.roomCode = null;
+      }
+    }
+  }
+  for (const s of (room.spectators || [])) {
+    if (s.socketId) {
+      const sock = io.sockets.sockets.get(s.socketId);
+      if (sock) {
+        sock.leave(code);
+        sock.data.roomCode = null;
+      }
+    }
+  }
+
+  rooms.delete(code);
+  pushLobbySystemMessage(`게임방 [${code}]이 종료되었습니다.`);
+  broadcastLobbyUpdate();
+}
+
+function startGameInRoom(room, fillWithAI = false) {
+  clearRoomTimers(room);
+
+  room.aiDifficulty = 'pro';
+
+  room.players = room.players.filter((p) => !p.isAI && !p.hasLeft);
+
+  if (fillWithAI) {
+    let aiIdx = 0;
+    while (room.players.length < room.maxPlayers) {
+      room.players.push({
+        sessionId: `ai-${Date.now()}-${aiIdx}`,
+        socketId: null,
+        name: AI_NAMES[aiIdx % AI_NAMES.length],
+        isAI: true,
+        connected: true,
+        hasLeft: false,
+        hasMelded: false,
+        rack: [],
+      });
+      aiIdx++;
+    }
+  }
+
+  if (room.players.length < 2) {
+    return { error: '최소 2명 이상이 필요합니다. 친구를 초대하거나 AI를 채워 시작하세요.' };
+  }
+
+  if (!room.players.some((p) => p.sessionId === room.hostSessionId)) {
+    const nextHuman = room.players.find((p) => !p.isAI);
+    if (nextHuman) room.hostSessionId = nextHuman.sessionId;
+  }
+
+  room.phase = 'playing';
   room.pool = createDeck();
   room.board = createEmptyBoard();
-  room.phase = 'playing';
   room.currentPlayerIndex = 0;
   room.consecutivePasses = 0;
   room.finalRoundJustTriggered = false;
   room.finalRoundTurnsLeft = null;
   room.finalRoundTriggerName = null;
+  room.finalRoundTriggerSessionId = null;
   room.recentAITileIds = new Set();
   room.gameOverData = null;
-  room.turnProcessing = false;
 
   for (const p of room.players) {
     p.hasMelded = false;
     p.rack = Array(20).fill(null);
     for (let i = 0; i < 14; i++) {
-      if (room.pool.length > 0) p.rack[i] = room.pool.pop();
+      p.rack[i] = room.pool.pop();
     }
-    sortPlayerRackInitial(p);
+    sortInitialRack(p);
   }
 
   startTurn(room);
+  return { ok: true };
 }
 
 function startTurn(room) {
   clearRoomTimers(room);
-  if (room.phase !== 'playing') return;
-
-  room.turnProcessing = false;
   const player = room.players[room.currentPlayerIndex];
   if (!player) return;
 
@@ -486,37 +541,39 @@ function startTurn(room) {
   room.playedFromRackIds = new Set(getRackTiles(player).map((t) => t.id));
   room.timeLeft = TURN_SECONDS;
   room.turnDeadline = Date.now() + TURN_SECONDS * 1000;
+  room.handlingTimeout = false;
 
+  io.to(room.code).emit('game:remoteDrag', { active: false });
   broadcastRoom(room);
-  io.to(room.code).emit('game:timer', {
-    timeLeft: room.timeLeft,
-    currentPlayerIndex: room.currentPlayerIndex,
-  });
 
-  if (player.isAI) {
-    startTimerCountdown(room);
+  if (room.finalRoundTurnsLeft === 1 && player.sessionId === room.finalRoundTriggerSessionId) {
+    io.to(room.code).emit('room:toast', {
+      msg: `🔥 마지막 카드를 뽑은 ${player.name}님의 마지막 차례입니다! 턴 종료 시 점수로 등수를 계산합니다.`,
+      tone: 'info',
+    });
+  }
+
+  if (!player.isAI && !player.hasLeft && player.socketId) {
+    io.to(player.socketId).emit('game:yourTurn', { timeLeft: TURN_SECONDS });
+  }
+
+  if (player.hasLeft) {
     room.aiTimeout = setTimeout(() => {
       try {
-        executeAITurn(room);
+        if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== player) return;
+        const drawn = room.pool.length > 0 && drawTileFromPool(room, player) ? 1 : 0;
+        room.consecutivePasses++;
+        advanceToNextPlayer(room, {
+          msg: drawn > 0 ? `${player.name}님(퇴장) 자동 뽑기` : `${player.name}님(퇴장) 자동 패스`,
+          tone: 'info',
+        });
       } catch (err) {
-        console.error('[AI Turn Error]', err);
-        if (room.phase === 'playing') {
-          if (room.pool.length > 0) drawTileFromPool(room, player);
-          advanceToNextPlayer(room, { msg: `${player.name}이(가) 턴을 넘겼습니다.`, tone: 'info' });
-        }
+        console.error('[LeftPlayerTurnError]', err);
       }
-    }, 950);
-  } else {
-    if (player.socketId) {
-      const sock = io.sockets.sockets.get(player.socketId);
-      if (sock) sock.emit('game:yourTurn');
-    }
-    startTimerCountdown(room);
+    }, 900);
+    return;
   }
-}
 
-function startTimerCountdown(room) {
-  if (room.timerInterval) clearInterval(room.timerInterval);
   room.timerInterval = setInterval(() => {
     try {
       if (room.phase !== 'playing') {
@@ -525,45 +582,64 @@ function startTimerCountdown(room) {
       }
       const remaining = Math.max(0, Math.ceil((room.turnDeadline - Date.now()) / 1000));
       room.timeLeft = remaining;
-      io.to(room.code).emit('game:timer', {
-        timeLeft: remaining,
-        currentPlayerIndex: room.currentPlayerIndex,
-      });
-
-      if (remaining <= 0 && !room.turnProcessing) {
+      broadcastTimer(room);
+      if (remaining <= 0) {
         handleTurnTimeout(room);
       }
     } catch (err) {
-      console.error('[Timer Tick Error]', err);
+      console.error('[TimerError]', err);
     }
   }, 1000);
+
+  if (player.isAI) {
+    room.aiTimeout = setTimeout(() => {
+      try {
+        executeAITurn(room);
+      } catch (err) {
+        console.error('[AIError]', err);
+        if (room.phase === 'playing') {
+          if (room.pool.length > 0) drawTileFromPool(room, player);
+          advanceToNextPlayer(room);
+        }
+      }
+    }, 1050);
+  }
 }
 
 function handleTurnTimeout(room) {
-  if (room.turnProcessing || room.phase !== 'playing') return;
-  room.turnProcessing = true;
-  clearRoomTimers(room);
-
+  if (room.handlingTimeout) return;
+  room.handlingTimeout = true;
   try {
+    clearRoomTimers(room);
     const player = room.players[room.currentPlayerIndex];
-    if (!player) return;
-
-    if (player.isAI) {
-      if (room.pool.length > 0) drawTileFromPool(room, player);
-      room.consecutivePasses++;
-      advanceToNextPlayer(room, { msg: `${player.name}이(가) 타일 1장을 뽑았습니다.`, tone: 'info' });
-      return;
-    }
+    if (!player || room.phase !== 'playing') return;
 
     const evalRes = evaluateTurnState(room);
     if (evalRes.canConfirm) {
-      io.to(room.code).emit('room:toast', { msg: `${player.name}님 시간 종료 — 유효 배치가 자동 확정되었습니다.`, tone: 'success' });
-      confirmTurnSuccess(room);
+      confirmTurnSuccess(room, { msg: `${player.name} 시간 종료 — 유효한 배치가 자동 확정되었습니다.`, tone: 'success' });
+      return;
+    }
+
+    if (!player.hasMelded) {
+      const hadChanges = hasBoardChangedFromSnapshot(room) || evalRes.playedCount > 0;
+      if (hadChanges && room.turnSnapshot) {
+        room.board = cloneBoard(room.turnSnapshot.board);
+        player.rack = cloneRack(room.turnSnapshot.rack);
+      }
+
+      const drawn = room.pool.length > 0 && drawTileFromPool(room, player) ? 1 : 0;
+      const msg = hadChanges
+        ? `${player.name} 시간 초과! 첫 등록 미완성/30점 미만 패를 자동 회수하고 ${drawn}장을 받았습니다.`
+        : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`;
+
+      room.consecutivePasses++;
+      advanceToNextPlayer(room, { msg, tone: 'error' });
       return;
     }
 
     const groups = getBoardGroups(room.board);
     const hasInvalidGroup = groups.some((g) => !g.valid);
+    let keptMadeOnBoard = false;
     let hasUnresolvableOldBreak = false;
 
     if (hasInvalidGroup) {
@@ -585,7 +661,11 @@ function handleTurnTimeout(room) {
       if (hasUnresolvableOldBreak) {
         room.board = cloneBoard(room.turnSnapshot.board);
         player.rack = cloneRack(room.turnSnapshot.rack);
+      } else {
+        keptMadeOnBoard = hasBoardChangedFromSnapshot(room);
       }
+    } else {
+      keptMadeOnBoard = hasBoardChangedFromSnapshot(room);
     }
 
     const penalty = hasInvalidGroup ? 3 : 1;
@@ -595,42 +675,48 @@ function handleTurnTimeout(room) {
     }
 
     const msg = hasInvalidGroup
-      ? `${player.name}님 시간 초과! 미완성 패를 회수하고 페널티 ${drawn}장을 받았습니다.`
-      : `${player.name}님 시간 초과! 타일 ${drawn}장을 뽑았습니다.`;
+      ? `${player.name} 시간 초과! 미완성 패를 회수하고 페널티 ${drawn}장을 받았습니다.`
+      : keptMadeOnBoard
+        ? `${player.name} 시간 초과! 메이드 패는 유지되고 강제로 ${drawn}장을 받았습니다.`
+        : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`;
+
     room.consecutivePasses++;
     advanceToNextPlayer(room, { msg, tone: 'error' });
   } catch (err) {
-    console.error('[Timeout Handler Error]', err);
-    room.turnProcessing = false;
-    advanceToNextPlayer(room, null);
+    console.error('[TimeoutError]', err);
+    if (room.phase === 'playing') {
+      advanceToNextPlayer(room);
+    }
+  } finally {
+    room.handlingTimeout = false;
   }
 }
 
-function confirmTurnSuccess(room) {
+function confirmTurnSuccess(room, toast = null) {
   clearRoomTimers(room);
   const player = room.players[room.currentPlayerIndex];
   if (!player) return;
+
   if (!player.hasMelded) player.hasMelded = true;
   room.consecutivePasses = 0;
   room.recentAITileIds = new Set();
 
   if (getRackTiles(player).length === 0) {
-    triggerGameOver(room, player, '모든 타일을 가장 먼저 내려놓았습니다!');
+    triggerGameOver(room, player, `${player.name}님이 모든 타일을 가장 먼저 내려놓았습니다!`);
     return;
   }
 
-  advanceToNextPlayer(room, null);
+  advanceToNextPlayer(room, toast || { msg: `${player.name}님이 턴을 완료했습니다.`, tone: 'success' });
 }
 
 function advanceToNextPlayer(room, toast = null) {
   clearRoomTimers(room);
-  if (room.phase !== 'playing') return;
 
   if (room.finalRoundJustTriggered) {
     room.finalRoundJustTriggered = false;
     room.finalRoundTurnsLeft = room.players.length;
     toast = {
-      msg: `더미 소진! 마지막 패를 뽑은 ${room.finalRoundTriggerName}님 차례까지 1바퀴 더 진행 후 점수로 승부합니다!`,
+      msg: `더미 소진! 다음 사람부터 한 바퀴 돌아 마지막 카드를 뽑은 ${room.finalRoundTriggerName}님 차례가 끝나면 점수로 등수를 계산합니다.`,
       tone: 'info',
     };
   } else if (room.finalRoundTurnsLeft !== null) {
@@ -697,6 +783,14 @@ function computeFinalScores(room, forcedWinnerSessionId = null) {
 
   rows.sort((a, b) => (a.isWinner !== b.isWinner ? (a.isWinner ? -1 : 1) : b.adjustedScore - a.adjustedScore));
 
+  let currentRank = 1;
+  rows.forEach((r, idx) => {
+    if (idx > 0 && r.adjustedScore < rows[idx - 1].adjustedScore) {
+      currentRank = idx + 1;
+    }
+    r.rank = currentRank;
+  });
+
   return {
     winner: winnerEntry.player,
     minSum,
@@ -722,8 +816,8 @@ function triggerGameOver(room, winner, subtitle, precomputed = null) {
   const result = precomputed || computeFinalScores(room, winner.sessionId);
 
   room.gameOverData = {
-    winnerSessionId: result.winner.sessionId,
     winnerName: result.winner.name,
+    winnerSessionId: result.winner.sessionId,
     subtitle,
     minSum: result.minSum,
     totalLoserPenalty: result.totalLoserPenalty,
@@ -731,10 +825,16 @@ function triggerGameOver(room, winner, subtitle, precomputed = null) {
   };
 
   broadcastRoom(room);
-  broadcastLobbyUpdate();
 }
 
-// ==================== PRO AI ENGINE (RECOMBINATION + JOKER SUPPORT) ====================
+// ==================== PRO AI ENGINE (SOLVER + RECOMBINATION + JOKER SWAP) ====================
+const JOKER_TYPE = 52;
+
+function tileToType(tile) {
+  if (tile.isJoker) return JOKER_TYPE;
+  return COLOR_ORDER[tile.color] * 13 + (tile.num - 1);
+}
+
 function isAreaFreeOnBoard(board, row, col, len) {
   if (row < 0 || row >= GRID_ROWS || col < 0 || col + len > GRID_COLS) return false;
   for (let i = 0; i < len; i++) {
@@ -743,7 +843,9 @@ function isAreaFreeOnBoard(board, row, col, len) {
   return true;
 }
 
-function findNearestEmptySpotForAI(board, prefRow, prefCol, len) {
+function findEmptySpotOnBoard(board, len) {
+  const prefRow = Math.floor(GRID_ROWS / 2);
+  const prefCol = Math.floor((GRID_COLS - len) / 2);
   let bestWithGap = null;
   let bestGapDist = Infinity;
   let bestAny = null;
@@ -768,346 +870,568 @@ function findNearestEmptySpotForAI(board, prefRow, prefCol, len) {
   return bestWithGap || bestAny;
 }
 
-function packSetsOntoBoard(existingBoard, untouchedGroups, newSets) {
+function packGroupsCleanlyOnBoard(groupsTilesList) {
+  const board = createEmptyBoard();
+  const sorted = [...groupsTilesList].sort((a, b) => b.length - a.length);
+  let r = 0;
+  let c = 0;
+  for (const g of sorted) {
+    if (c > 0 && c + g.length > GRID_COLS) {
+      r++;
+      c = 0;
+    }
+    if (r >= GRID_ROWS || c + g.length > GRID_COLS) {
+      const spot = findEmptySpotOnBoard(board, g.length);
+      if (!spot) return null;
+      for (let i = 0; i < g.length; i++) board[spot.row][spot.col + i] = g[i];
+      continue;
+    }
+    for (let i = 0; i < g.length; i++) board[r][c + i] = g[i];
+    c += g.length + 1;
+    if (c >= GRID_COLS) {
+      r++;
+      c = 0;
+    }
+  }
+  return board;
+}
+
+function layoutRecombinedBoard(untouchedGroups, newSets) {
   const board = createEmptyBoard();
   for (const g of untouchedGroups) {
     for (let i = 0; i < g.tiles.length; i++) {
       board[g.row][g.startCol + i] = g.tiles[i];
     }
   }
-
-  const sortedNew = [...newSets].sort((a, b) => b.length - a.length);
-  const centerR = Math.floor(GRID_ROWS / 2);
-
-  for (const setTiles of sortedNew) {
-    const prefC = Math.max(0, Math.floor((GRID_COLS - setTiles.length) / 2));
-    const spot = findNearestEmptySpotForAI(board, centerR, prefC, setTiles.length);
+  let allFit = true;
+  for (const tiles of newSets) {
+    const spot = findEmptySpotOnBoard(board, tiles.length);
     if (!spot) {
-      const allSets = [...untouchedGroups.map((g) => g.tiles), ...sortedNew].sort((a, b) => b.length - a.length);
-      const fresh = createEmptyBoard();
-      for (const s of allSets) {
-        const sp = findNearestEmptySpotForAI(fresh, 1, 1, s.length);
-        if (!sp) return null;
-        for (let i = 0; i < s.length; i++) fresh[sp.row][sp.col + i] = s[i];
-      }
-      return fresh;
+      allFit = false;
+      break;
     }
-    for (let i = 0; i < setTiles.length; i++) {
-      board[spot.row][spot.col + i] = setTiles[i];
+    for (let i = 0; i < tiles.length; i++) {
+      board[spot.row][spot.col + i] = tiles[i];
     }
   }
-  return board;
+  if (allFit) return board;
+  const allGroups = [...untouchedGroups.map((g) => g.tiles), ...newSets];
+  return packGroupsCleanlyOnBoard(allGroups);
 }
 
-function generateValidSetsFromPool(tiles, maxJokersPerSet = 1) {
-  const sets = [];
-  const jokers = tiles.filter((t) => t.isJoker);
-  const normals = tiles.filter((t) => !t.isJoker);
+function generateSetsContainingType(t, avail) {
+  const results = [];
+  const colorIdx = Math.floor(t / 13);
+  const num = (t % 13) + 1;
+  const availJokers = avail[JOKER_TYPE];
 
-  const byColorNum = new Map();
-  for (const t of normals) {
-    const key = `${t.color}:${t.num}`;
-    if (!byColorNum.has(key)) byColorNum.set(key, []);
-    byColorNum.get(key).push(t);
+  const otherColors = [];
+  for (let c = 0; c < 4; c++) {
+    if (c !== colorIdx) otherColors.push(c * 13 + (num - 1));
   }
 
-  // 1. Groups (3 or 4 same number, distinct colors)
-  for (let num = 1; num <= 13; num++) {
-    const availableByColor = [];
-    for (const c of COLORS) {
-      const list = byColorNum.get(`${c}:${num}`);
-      if (list && list.length > 0) availableByColor.push(list[0]);
-    }
-    const n = availableByColor.length;
-    if (n >= 3) {
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          for (let k = j + 1; k < n; k++) {
-            const arr = [availableByColor[i], availableByColor[j], availableByColor[k]];
-            sets.push({ tiles: arr, points: num * 3, jokersUsed: 0 });
-          }
-        }
-      }
-      if (n === 4) {
-        sets.push({ tiles: [...availableByColor], points: num * 4, jokersUsed: 0 });
+  {
+    const slots = [t, ...otherColors];
+    const types = [];
+    let jokersNeeded = 0;
+    for (const s of slots) {
+      if (avail[s] > 0) types.push(s);
+      else {
+        jokersNeeded++;
+        types.push(JOKER_TYPE);
       }
     }
-    if (n >= 2 && jokers.length >= 1 && maxJokersPerSet >= 1) {
-      for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-          sets.push({ tiles: [availableByColor[i], availableByColor[j], jokers[0]], points: num * 3, jokersUsed: 1 });
-        }
-      }
+    if (jokersNeeded <= availJokers && jokersNeeded <= 2) {
+      results.push({ kind: 'group', num, types, points: num * 4, jokers: jokersNeeded });
     }
   }
 
-  // 2. Runs (same color, length 3..13)
-  for (const color of COLORS) {
-    const atNum = Array(14).fill(null);
-    for (let num = 1; num <= 13; num++) {
-      const list = byColorNum.get(`${color}:${num}`);
-      if (list && list.length > 0) atNum[num] = list[0];
+  const pairs = [
+    [otherColors[0], otherColors[1]],
+    [otherColors[0], otherColors[2]],
+    [otherColors[1], otherColors[2]],
+  ];
+  const seenGroup3 = new Set();
+  for (const [cA, cB] of pairs) {
+    const slots = [t, cA, cB];
+    const types = [];
+    let jokersNeeded = 0;
+    for (const s of slots) {
+      if (avail[s] > 0) types.push(s);
+      else {
+        jokersNeeded++;
+        types.push(JOKER_TYPE);
+      }
     }
-
-    for (let start = 1; start <= 11; start++) {
-      for (let len = 3; len <= 13 - start + 1; len++) {
-        const missingPositions = [];
-        for (let offset = 0; offset < len; offset++) {
-          if (!atNum[start + offset]) missingPositions.push(offset);
-        }
-        if (missingPositions.length === 0) {
-          const arr = [];
-          let pts = 0;
-          for (let offset = 0; offset < len; offset++) {
-            arr.push(atNum[start + offset]);
-            pts += start + offset;
-          }
-          sets.push({ tiles: arr, points: pts, jokersUsed: 0 });
-        } else if (missingPositions.length === 1 && len <= 5 && jokers.length >= 1 && maxJokersPerSet >= 1) {
-          const arr = [];
-          let pts = 0;
-          for (let offset = 0; offset < len; offset++) {
-            arr.push(atNum[start + offset] || jokers[0]);
-            pts += start + offset;
-          }
-          sets.push({ tiles: arr, points: pts, jokersUsed: 1 });
-        }
+    if (jokersNeeded <= availJokers && jokersNeeded <= 1) {
+      const key = [...types].sort((a, b) => a - b).join(',');
+      if (!seenGroup3.has(key)) {
+        seenGroup3.add(key);
+        results.push({ kind: 'group', num, types, points: num * 3, jokers: jokersNeeded });
       }
     }
   }
 
-  return sets;
-}
+  for (let len = 3; len <= 5; len++) {
+    const minStart = Math.max(1, num - len + 1);
+    const maxStart = Math.min(13 - len + 1, num);
+    for (let start = minStart; start <= maxStart; start++) {
+      const types = [];
+      let jokersNeeded = 0;
+      let pts = 0;
+      let nonJokers = 0;
+      for (let k = 0; k < len; k++) {
+        const nVal = start + k;
+        const tp = colorIdx * 13 + (nVal - 1);
+        pts += nVal;
+        if (tp === t || avail[tp] > 0) {
+          types.push(tp);
+          nonJokers++;
+        } else {
+          jokersNeeded++;
+          types.push(JOKER_TYPE);
+        }
+      }
+      if (nonJokers >= 2 && jokersNeeded <= availJokers && jokersNeeded <= 2) {
+        results.push({ kind: 'run', colorIdx, start, len, types, points: pts, jokers: jokersNeeded });
+      }
+    }
+  }
 
-function solveInitialMeldPro(rackTiles, deadlineMs) {
-  const candidates = generateValidSetsFromPool(rackTiles, 1);
-  if (candidates.length === 0) return null;
-
-  candidates.sort((a, b) => {
-    if (a.jokersUsed !== b.jokersUsed) return a.jokersUsed - b.jokersUsed;
+  results.sort((a, b) => {
+    if (a.jokers !== b.jokers) return a.jokers - b.jokers;
+    if (a.types.length !== b.types.length) return b.types.length - a.types.length;
     return b.points - a.points;
   });
 
+  return results;
+}
+
+function solveInitialMeldPro(rackTiles, timeBudgetMs = 55) {
+  const opt = new Int8Array(53);
+  for (const t of rackTiles) opt[tileToType(t)]++;
+
+  const candMap = new Map();
+  for (let tp = 0; tp < 52; tp++) {
+    if (opt[tp] === 0) continue;
+    const sets = generateSetsContainingType(tp, opt);
+    for (const s of sets) {
+      const key = s.kind === 'run'
+        ? `R:${s.colorIdx}:${s.start}:${s.types.join(',')}`
+        : `G:${s.num}:${[...s.types].sort((a, b) => a - b).join(',')}`;
+      if (!candMap.has(key)) candMap.set(key, s);
+    }
+  }
+
+  const candidates = Array.from(candMap.values());
+  candidates.sort((a, b) => {
+    if (a.jokers !== b.jokers) return a.jokers - b.jokers;
+    return b.points - a.points;
+  });
+
+  const deadline = Date.now() + timeBudgetMs;
+  const totalRack = rackTiles.length;
   let best = null;
-  let bestScore = -1;
-  const usedIds = new Set();
+  let bestScore = -Infinity;
   const chosen = [];
 
-  function dfs(idx, totalPts, totalTiles, totalJokers) {
-    if (Date.now() > deadlineMs) return;
+  function canUse(set) {
+    let jNeed = 0;
+    for (const tp of set.types) {
+      if (tp === JOKER_TYPE) jNeed++;
+      else if (opt[tp] <= 0) return false;
+    }
+    return opt[JOKER_TYPE] >= jNeed;
+  }
 
-    if (totalPts >= 30) {
-      const winBonus = totalTiles === rackTiles.length ? 100000 : 0;
-      const score = winBonus + totalTiles * 100 + totalPts - totalJokers * 140;
+  function applySet(set, delta) {
+    for (const tp of set.types) opt[tp] += delta;
+  }
+
+  function dfs(idx, curPoints, curTiles, curJokers) {
+    if (curPoints >= 30) {
+      const winBonus = curTiles === totalRack ? 100000 : 0;
+      const score = winBonus + curTiles * 100 + curPoints * 2 - curJokers * 28;
       if (score > bestScore) {
         bestScore = score;
         best = {
-          sets: chosen.map((c) => c.tiles),
-          points: totalPts,
-          tilesCount: totalTiles,
+          sets: chosen.map((s) => s),
+          points: curPoints,
+          tilesUsed: curTiles,
         };
       }
+      if (curTiles === totalRack) return;
     }
-
-    if (idx >= candidates.length) return;
+    if (idx >= candidates.length || Date.now() > deadline) return;
 
     for (let i = idx; i < candidates.length; i++) {
-      if (Date.now() > deadlineMs) return;
-      const c = candidates[i];
-      let conflict = false;
-      for (const t of c.tiles) {
-        if (usedIds.has(t.id)) {
-          conflict = true;
-          break;
-        }
-      }
-      if (conflict) continue;
-
-      for (const t of c.tiles) usedIds.add(t.id);
-      chosen.push(c);
-      dfs(i + 1, totalPts + c.points, totalTiles + c.tiles.length, totalJokers + c.jokersUsed);
+      if (Date.now() > deadline) return;
+      const s = candidates[i];
+      if (!canUse(s)) continue;
+      applySet(s, -1);
+      chosen.push(s);
+      dfs(i, curPoints + s.points, curTiles + s.types.length, curJokers + s.jokers);
       chosen.pop();
-      for (const t of c.tiles) usedIds.delete(t.id);
+      applySet(s, 1);
+      if (best && best.tilesUsed === totalRack) return;
     }
   }
 
   dfs(0, 0, 0, 0);
-  return best;
+  if (!best) return null;
+
+  const pools = Array.from({ length: 53 }, () => []);
+  for (const t of rackTiles) pools[tileToType(t)].push(t);
+
+  const concreteSets = [];
+  for (const s of best.sets) {
+    const tiles = [];
+    for (const tp of s.types) {
+      const obj = pools[tp].pop();
+      if (!obj) return null;
+      tiles.push(obj);
+    }
+    if (!validateSet(tiles).valid) return null;
+    concreteSets.push(tiles);
+  }
+
+  return { sets: concreteSets, points: best.points, tilesUsed: best.tilesUsed };
 }
 
-function solveRecombinationPro(board, rackTiles, budgetMs = 80) {
-  const deadlineMs = Date.now() + budgetMs;
-  const boardGroups = getBoardGroups(board);
-  const rackIds = new Set(rackTiles.map((t) => t.id));
+function solveRecombinationPro(boardGroups, rackTiles, timeBudgetMs = 80) {
+  const rackColors = new Set(rackTiles.filter((t) => !t.isJoker).map((t) => t.color));
+  const rackNums = new Set(rackTiles.filter((t) => !t.isJoker).map((t) => t.num));
+  const hasRackJoker = rackTiles.some((t) => t.isJoker);
 
-  const relevantIndices = new Set();
-  for (let gi = 0; gi < boardGroups.length; gi++) {
-    const g = boardGroups[gi];
-    const hasJoker = g.tiles.some((t) => t.isJoker);
-    let touchesRack = hasJoker || g.tiles.length >= 4;
+  const scoredGroups = boardGroups.map((g, idx) => {
+    let relevance = 0;
+    const hasBoardJoker = g.tiles.some((t) => t.isJoker);
+    if (hasBoardJoker) relevance += 50;
+    if (g.tiles.length >= 4) relevance += 15;
+    for (const t of g.tiles) {
+      if (t.isJoker) continue;
+      if (rackNums.has(t.num)) relevance += 12;
+      if (rackColors.has(t.color)) relevance += 4;
+    }
+    if (hasRackJoker) relevance += 5;
+    return { g, idx, relevance };
+  });
 
-    if (!touchesRack) {
-      for (const rt of rackTiles) {
-        if (rt.isJoker) {
-          touchesRack = true;
-          break;
-        }
-        for (const bt of g.tiles) {
-          if (bt.isJoker) {
-            touchesRack = true;
-            break;
+  scoredGroups.sort((a, b) => b.relevance - a.relevance);
+  const maxActiveGroups = 9;
+  const activeSet = new Set();
+  for (const item of scoredGroups) {
+    if (item.relevance > 0 && activeSet.size < maxActiveGroups) {
+      activeSet.add(item.idx);
+    }
+  }
+
+  const activeGroups = [];
+  const untouchedGroups = [];
+  boardGroups.forEach((g, idx) => {
+    if (activeSet.has(idx)) activeGroups.push(g);
+    else untouchedGroups.push(g);
+  });
+
+  const activeBoardTiles = activeGroups.flatMap((g) => g.tiles);
+  const req = new Int8Array(53);
+  const opt = new Int8Array(53);
+  const avail = new Int8Array(53);
+
+  for (const t of activeBoardTiles) {
+    const tp = tileToType(t);
+    req[tp]++;
+    avail[tp]++;
+  }
+  for (const t of rackTiles) {
+    const tp = tileToType(t);
+    opt[tp]++;
+    avail[tp]++;
+  }
+
+  const totalRack = rackTiles.length;
+  const deadline = Date.now() + timeBudgetMs;
+  let best = null;
+  let bestScore = -Infinity;
+  const currentSets = [];
+
+  function tryGreedilyAddRemainingRack(setsCopy, remOpt) {
+    const extraSets = [...setsCopy];
+    const usedOptCount = { count: 0, pts: 0, jokers: 0 };
+
+    let extended = true;
+    while (extended) {
+      extended = false;
+      for (let i = 0; i < extraSets.length; i++) {
+        const s = extraSets[i];
+        if (s.kind === 'group' && s.types.length === 3) {
+          for (let c = 0; c < 4; c++) {
+            const tp = c * 13 + (s.num - 1);
+            if (remOpt[tp] > 0 && !s.types.includes(tp)) {
+              remOpt[tp]--;
+              extraSets[i] = { ...s, types: [...s.types, tp], points: s.points + s.num };
+              usedOptCount.count++;
+              usedOptCount.pts += s.num;
+              extended = true;
+              break;
+            }
           }
-          if (bt.num === rt.num || (bt.color === rt.color && Math.abs(bt.num - rt.num) <= 2)) {
-            touchesRack = true;
-            break;
+        } else if (s.kind === 'run' && s.types.length < 13) {
+          if (s.start + s.len <= 13) {
+            const rightTp = s.colorIdx * 13 + (s.start + s.len - 1);
+            if (remOpt[rightTp] > 0) {
+              remOpt[rightTp]--;
+              const nVal = s.start + s.len;
+              extraSets[i] = { ...s, len: s.len + 1, types: [...s.types, rightTp], points: s.points + nVal };
+              usedOptCount.count++;
+              usedOptCount.pts += nVal;
+              extended = true;
+              continue;
+            }
           }
-        }
-        if (touchesRack) break;
-      }
-    }
-    if (touchesRack) relevantIndices.add(gi);
-  }
-
-  const relevantList = [...relevantIndices].slice(0, 6);
-  const relevantSet = new Set(relevantList);
-  const untouchedGroups = boardGroups.filter((_g, idx) => !relevantSet.has(idx));
-  const poolBoardTiles = [];
-  for (const idx of relevantList) {
-    poolBoardTiles.push(...boardGroups[idx].tiles);
-  }
-
-  const requiredBoardIds = new Set(poolBoardTiles.map((t) => t.id));
-  const combinedPool = [...poolBoardTiles, ...rackTiles];
-  const candidates = generateValidSetsFromPool(combinedPool, 1);
-
-  const byTileId = new Map();
-  for (let ci = 0; ci < candidates.length; ci++) {
-    const c = candidates[ci];
-    c.rackCount = c.tiles.filter((t) => rackIds.has(t.id)).length;
-    c.boardCount = c.tiles.length - c.rackCount;
-    for (const t of c.tiles) {
-      if (!byTileId.has(t.id)) byTileId.set(t.id, []);
-      byTileId.get(t.id).push(ci);
-    }
-  }
-
-  let bestSolution = null;
-  let bestScore = 0;
-  const usedTileIds = new Set();
-  const chosenSets = [];
-
-  const rackOnlyCandidates = candidates
-    .filter((c) => c.boardCount === 0 && c.rackCount >= 3)
-    .sort((a, b) => b.rackCount - a.rackCount || b.points - a.points);
-
-  function addBestRackOnlySets(baseSets, baseRackPlayed, basePts) {
-    const extraUsed = new Set(usedTileIds);
-    const finalSets = [...baseSets];
-    let rackPlayed = baseRackPlayed;
-    let pts = basePts;
-
-    for (const c of rackOnlyCandidates) {
-      if (c.tiles.some((t) => extraUsed.has(t.id))) continue;
-      c.tiles.forEach((t) => extraUsed.add(t.id));
-      finalSets.push(c.tiles);
-      rackPlayed += c.rackCount;
-      pts += c.points;
-    }
-
-    if (rackPlayed > 0) {
-      const winBonus = rackPlayed === rackTiles.length ? 100000 : 0;
-      const score = winBonus + rackPlayed * 120 + pts;
-      if (score > bestScore) {
-        bestScore = score;
-        bestSolution = {
-          sets: finalSets,
-          rackPlayed,
-          points: pts,
-        };
-      }
-    }
-  }
-
-  function coverBoardTiles(rackPlayedSoFar, ptsSoFar) {
-    if (Date.now() > deadlineMs) return;
-
-    let pickId = null;
-    let pickOptions = null;
-    for (const reqId of requiredBoardIds) {
-      if (usedTileIds.has(reqId)) continue;
-      const opts = byTileId.get(reqId) || [];
-      let validCount = 0;
-      const avail = [];
-      for (const ci of opts) {
-        const c = candidates[ci];
-        let conflict = false;
-        for (const t of c.tiles) {
-          if (usedTileIds.has(t.id)) {
-            conflict = true;
-            break;
+          if (s.start > 1) {
+            const leftTp = s.colorIdx * 13 + (s.start - 2);
+            if (remOpt[leftTp] > 0) {
+              remOpt[leftTp]--;
+              const nVal = s.start - 1;
+              extraSets[i] = { ...s, start: nVal, len: s.len + 1, types: [leftTp, ...s.types], points: s.points + nVal };
+              usedOptCount.count++;
+              usedOptCount.pts += nVal;
+              extended = true;
+              continue;
+            }
           }
         }
-        if (!conflict) {
-          validCount++;
-          avail.push(c);
-        }
-      }
-      if (validCount === 0) return;
-      if (pickOptions === null || validCount < pickOptions.length) {
-        pickId = reqId;
-        pickOptions = avail;
-        if (validCount === 1) break;
       }
     }
 
-    if (pickId === null) {
-      addBestRackOnlySets(chosenSets.map((c) => c.tiles), rackPlayedSoFar, ptsSoFar);
+    let addedNew = true;
+    while (addedNew) {
+      addedNew = false;
+      let bestPure = null;
+      for (let tp = 0; tp < 52; tp++) {
+        if (remOpt[tp] <= 0) continue;
+        const cands = generateSetsContainingType(tp, remOpt);
+        for (const c of cands) {
+          if (!bestPure || (c.jokers < bestPure.jokers) || (c.jokers === bestPure.jokers && c.types.length > bestPure.types.length)) {
+            bestPure = c;
+          }
+        }
+      }
+      if (bestPure) {
+        for (const tp of bestPure.types) remOpt[tp]--;
+        extraSets.push(bestPure);
+        usedOptCount.count += bestPure.types.length;
+        usedOptCount.pts += bestPure.points;
+        usedOptCount.jokers += bestPure.jokers;
+        addedNew = true;
+      }
+    }
+
+    let remTotal = 0;
+    for (let i = 0; i < 53; i++) remTotal += remOpt[i];
+    if (remOpt[JOKER_TYPE] > 0 && remTotal === remOpt[JOKER_TYPE]) {
+      for (let i = 0; i < extraSets.length && remOpt[JOKER_TYPE] > 0; i++) {
+        const s = extraSets[i];
+        if (s.kind === 'group' && s.types.length < 4) {
+          remOpt[JOKER_TYPE]--;
+          extraSets[i] = { ...s, types: [...s.types, JOKER_TYPE], points: s.points + s.num, jokers: s.jokers + 1 };
+          usedOptCount.count++;
+          usedOptCount.pts += s.num;
+          usedOptCount.jokers++;
+        } else if (s.kind === 'run' && s.start + s.len <= 13) {
+          remOpt[JOKER_TYPE]--;
+          const nVal = s.start + s.len;
+          extraSets[i] = { ...s, len: s.len + 1, types: [...s.types, JOKER_TYPE], points: s.points + nVal, jokers: s.jokers + 1 };
+          usedOptCount.count++;
+          usedOptCount.pts += nVal;
+          usedOptCount.jokers++;
+        } else if (s.kind === 'run' && s.start > 1) {
+          remOpt[JOKER_TYPE]--;
+          const nVal = s.start - 1;
+          extraSets[i] = { ...s, start: nVal, len: s.len + 1, types: [JOKER_TYPE, ...s.types], points: s.points + nVal, jokers: s.jokers + 1 };
+          usedOptCount.count++;
+          usedOptCount.pts += nVal;
+          usedOptCount.jokers++;
+        }
+      }
+    }
+
+    return { sets: extraSets, extraCount: usedOptCount.count, extraPts: usedOptCount.pts, extraJokers: usedOptCount.jokers };
+  }
+
+  function evaluateSolution(usedRackCount, usedRackPts, usedRackJokers) {
+    const remOpt = new Int8Array(opt);
+    const finalized = tryGreedilyAddRemainingRack(currentSets, remOpt);
+    const totalUsed = usedRackCount + finalized.extraCount;
+    if (totalUsed <= 0) return;
+
+    const totalPts = usedRackPts + finalized.extraPts;
+    const totalJokers = usedRackJokers + finalized.extraJokers;
+    const isWin = totalUsed === totalRack;
+    const score = (isWin ? 100000 : 0) + totalUsed * 120 + totalPts * 2 - totalJokers * 20;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = {
+        sets: finalized.sets,
+        rackTilesUsed: totalUsed,
+        isWin,
+      };
+    }
+  }
+
+  function dfs(usedRackCount, usedRackPts, usedRackJokers) {
+    if (Date.now() > deadline) return;
+    if (best && best.isWin) return;
+
+    let targetType = -1;
+    for (let i = 0; i < 52; i++) {
+      if (req[i] > 0) {
+        targetType = i;
+        break;
+      }
+    }
+
+    if (targetType === -1) {
+      if (req[JOKER_TYPE] > 0) {
+        const jRem = req[JOKER_TYPE];
+        let attached = 0;
+        const backups = [];
+        for (let i = 0; i < currentSets.length && attached < jRem; i++) {
+          const s = currentSets[i];
+          if (s.kind === 'group' && s.types.length < 4) {
+            backups.push({ idx: i, prev: s });
+            currentSets[i] = { ...s, types: [...s.types, JOKER_TYPE], points: s.points + s.num, jokers: s.jokers + 1 };
+            attached++;
+          } else if (s.kind === 'run' && s.start + s.len <= 13) {
+            backups.push({ idx: i, prev: s });
+            const nVal = s.start + s.len;
+            currentSets[i] = { ...s, len: s.len + 1, types: [...s.types, JOKER_TYPE], points: s.points + nVal, jokers: s.jokers + 1 };
+            attached++;
+          } else if (s.kind === 'run' && s.start > 1) {
+            backups.push({ idx: i, prev: s });
+            const nVal = s.start - 1;
+            currentSets[i] = { ...s, start: nVal, len: s.len + 1, types: [JOKER_TYPE, ...s.types], points: s.points + nVal, jokers: s.jokers + 1 };
+            attached++;
+          }
+        }
+        if (attached === jRem) {
+          evaluateSolution(usedRackCount, usedRackPts, usedRackJokers);
+        }
+        for (const b of backups) currentSets[b.idx] = b.prev;
+        return;
+      }
+
+      evaluateSolution(usedRackCount, usedRackPts, usedRackJokers);
       return;
     }
 
-    pickOptions.sort((a, b) => b.rackCount - a.rackCount || b.points - a.points);
-    const branchCap = Math.min(pickOptions.length, 10);
+    const candidates = generateSetsContainingType(targetType, avail);
+    for (const s of candidates) {
+      if (Date.now() > deadline) return;
 
-    for (let i = 0; i < branchCap; i++) {
-      if (Date.now() > deadlineMs) return;
-      const c = pickOptions[i];
-      for (const t of c.tiles) usedTileIds.add(t.id);
-      chosenSets.push(c);
-      coverBoardTiles(rackPlayedSoFar + c.rackCount, ptsSoFar + c.points);
-      chosenSets.pop();
-      for (const t of c.tiles) usedTileIds.delete(t.id);
+      let jNeeded = 0;
+      let ok = true;
+      for (const tp of s.types) {
+        if (tp === JOKER_TYPE) jNeeded++;
+        else if (avail[tp] <= 0) { ok = false; break; }
+      }
+      if (!ok || avail[JOKER_TYPE] < jNeeded) continue;
+
+      const deltaReq = [];
+      const deltaOpt = [];
+      let addRackCnt = 0;
+      let addRackPts = 0;
+      let addRackJokers = 0;
+
+      for (const tp of s.types) {
+        avail[tp]--;
+        if (req[tp] > 0) {
+          req[tp]--;
+          deltaReq.push(tp);
+        } else {
+          opt[tp]--;
+          deltaOpt.push(tp);
+          addRackCnt++;
+          if (tp === JOKER_TYPE) {
+            addRackJokers++;
+          } else {
+            addRackPts += (tp % 13) + 1;
+          }
+        }
+      }
+
+      currentSets.push(s);
+      dfs(usedRackCount + addRackCnt, usedRackPts + addRackPts, usedRackJokers + addRackJokers);
+      currentSets.pop();
+
+      for (const tp of deltaReq) { req[tp]++; avail[tp]++; }
+      for (const tp of deltaOpt) { opt[tp]++; avail[tp]++; }
+
+      if (best && best.isWin) return;
     }
   }
 
-  coverBoardTiles(0, 0);
+  dfs(0, 0, 0);
 
-  if (!bestSolution) return null;
+  if (!best) {
+    const remOpt = new Int8Array(opt);
+    const pureRes = tryGreedilyAddRemainingRack([], remOpt);
+    if (pureRes.extraCount > 0) {
+      best = {
+        sets: [...activeGroups.map((g) => ({ existingTiles: g.tiles })), ...pureRes.sets],
+        rackTilesUsed: pureRes.extraCount,
+        isWin: pureRes.extraCount === totalRack,
+      };
+    }
+  }
 
-  const nextBoard = packSetsOntoBoard(board, untouchedGroups, bestSolution.sets);
+  if (!best) return null;
+
+  const boardPools = Array.from({ length: 53 }, () => []);
+  const rackPools = Array.from({ length: 53 }, () => []);
+  for (const t of activeBoardTiles) boardPools[tileToType(t)].push(t);
+  for (const t of rackTiles) rackPools[tileToType(t)].push(t);
+
+  const concreteSets = [];
+  const usedRackIds = new Set();
+
+  for (const s of best.sets) {
+    if (s.existingTiles) {
+      concreteSets.push(s.existingTiles);
+      continue;
+    }
+    const tiles = [];
+    for (const tp of s.types) {
+      let obj = boardPools[tp].pop();
+      if (!obj) {
+        obj = rackPools[tp].pop();
+        if (!obj) return null;
+        usedRackIds.add(obj.id);
+      }
+      tiles.push(obj);
+    }
+    if (!validateSet(tiles).valid) return null;
+    concreteSets.push(tiles);
+  }
+
+  for (let i = 0; i < 53; i++) {
+    if (boardPools[i].length > 0) return null;
+  }
+  if (usedRackIds.size === 0) return null;
+
+  const nextBoard = layoutRecombinedBoard(untouchedGroups, concreteSets);
   if (!nextBoard) return null;
 
-  const nextGroups = getBoardGroups(nextBoard);
-  if (!nextGroups.every((g) => g.valid)) return null;
+  const finalGroups = getBoardGroups(nextBoard);
+  if (!finalGroups.every((g) => g.valid)) return null;
 
-  const nextBoardIds = new Set();
-  for (let r = 0; r < GRID_ROWS; r++) {
-    for (let c = 0; c < GRID_COLS; c++) {
-      if (nextBoard[r][c]) nextBoardIds.add(nextBoard[r][c].id);
-    }
-  }
-  for (const bg of boardGroups) {
-    for (const t of bg.tiles) {
-      if (!nextBoardIds.has(t.id)) return null;
-    }
-  }
-
-  const placedIds = new Set();
-  for (const rt of rackTiles) {
-    if (nextBoardIds.has(rt.id)) placedIds.add(rt.id);
-  }
-  if (placedIds.size === 0) return null;
-
-  return { board: nextBoard, placedIds };
+  return {
+    nextBoard,
+    usedRackIds,
+    recombined: activeGroups.length > 0,
+  };
 }
 
 function executeAITurn(room) {
@@ -1117,715 +1441,711 @@ function executeAITurn(room) {
   const rackTiles = getRackTiles(ai);
 
   if (!ai.hasMelded) {
-    const meldPlan = solveInitialMeldPro(rackTiles, Date.now() + 75);
-    if (meldPlan && meldPlan.points >= 30 && meldPlan.sets.length > 0) {
-      const existingGroups = getBoardGroups(room.board);
-      const nextBoard = packSetsOntoBoard(room.board, existingGroups, meldPlan.sets);
-      if (nextBoard && getBoardGroups(nextBoard).every((g) => g.valid)) {
-        const placedIds = new Set();
-        meldPlan.sets.forEach((s) => s.forEach((t) => placedIds.add(t.id)));
-        room.board = nextBoard;
-        ai.rack = ai.rack.map((t) => (t && placedIds.has(t.id) ? null : t));
-        ai.hasMelded = true;
-        room.recentAITileIds = placedIds;
-        room.consecutivePasses = 0;
-        if (getRackTiles(ai).length === 0) {
-          triggerGameOver(room, ai, `${ai.name}님이 모든 타일을 먼저 내려놓았습니다!`);
-          return;
+    const meld = solveInitialMeldPro(rackTiles, 55);
+    if (meld && meld.sets.length > 0) {
+      const simBoard = cloneBoard(room.board);
+      const steps = [];
+      const placedIds = new Set();
+      let ok = true;
+
+      for (const tiles of meld.sets) {
+        const spot = findEmptySpotOnBoard(simBoard, tiles.length);
+        if (!spot) {
+          ok = false;
+          break;
         }
-        advanceToNextPlayer(room, {
-          msg: `${ai.name}이(가) ${meldPlan.points}점으로 첫 등록했습니다!`,
-          tone: 'success',
+        for (let i = 0; i < tiles.length; i++) {
+          simBoard[spot.row][spot.col + i] = tiles[i];
+          placedIds.add(tiles[i].id);
+        }
+        steps.push({ row: spot.row, col: spot.col, tiles });
+      }
+
+      if (ok && steps.length > 0) {
+        room.aiStepTimeouts = [];
+        steps.forEach((step, idx) => {
+          const tId = setTimeout(() => {
+            if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+            const stepIds = new Set();
+            for (let i = 0; i < step.tiles.length; i++) {
+              room.board[step.row][step.col + i] = step.tiles[i];
+              stepIds.add(step.tiles[i].id);
+            }
+            ai.rack = ai.rack.map((t) => (t && stepIds.has(t.id) ? null : t));
+            room.recentAITileIds = stepIds;
+            broadcastRoom(room);
+          }, idx * 550);
+          room.aiStepTimeouts.push(tId);
         });
+
+        const finishId = setTimeout(() => {
+          if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+          ai.hasMelded = true;
+          room.consecutivePasses = 0;
+          if (getRackTiles(ai).length === 0) {
+            triggerGameOver(room, ai, `${ai.name} 승리!`);
+            return;
+          }
+          advanceToNextPlayer(room, { msg: `${ai.name}님이 ${meld.points}점으로 첫 등록했습니다! 🧠`, tone: 'success' });
+        }, steps.length * 550 + 250);
+        room.aiStepTimeouts.push(finishId);
         return;
       }
     }
   } else {
-    const proMove = solveRecombinationPro(room.board, rackTiles, 80);
-    if (proMove && proMove.placedIds.size > 0) {
-      room.board = proMove.board;
-      ai.rack = ai.rack.map((t) => (t && proMove.placedIds.has(t.id) ? null : t));
-      room.recentAITileIds = proMove.placedIds;
-      room.consecutivePasses = 0;
-      if (getRackTiles(ai).length === 0) {
-        triggerGameOver(room, ai, `${ai.name}님이 모든 타일을 먼저 내려놓았습니다!`);
+    const boardGroups = getBoardGroups(room.board);
+    const solved = solveRecombinationPro(boardGroups, rackTiles, 80);
+    if (solved && solved.usedRackIds.size > 0) {
+      const nextRack = ai.rack.map((t) => (t && solved.usedRackIds.has(t.id) ? null : t));
+      const verified = verifyBoardAndRackMove(room, ai, solved.nextBoard, nextRack);
+      if (verified) {
+        room.board = verified.board;
+        ai.rack = verified.rack;
+        room.recentAITileIds = new Set(solved.usedRackIds);
+        room.consecutivePasses = 0;
+        broadcastRoom(room);
+
+        const count = solved.usedRackIds.size;
+        const finishId = setTimeout(() => {
+          if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+          if (getRackTiles(ai).length === 0) {
+            triggerGameOver(room, ai, `${ai.name} 승리!`);
+            return;
+          }
+          const msg = solved.recombined
+            ? `${ai.name}님이 바닥 패를 재조합해 타일 ${count}개를 내려놓았습니다! 🧠`
+            : `${ai.name}님이 타일 ${count}개를 내려놓았습니다.`;
+          advanceToNextPlayer(room, { msg, tone: 'info' });
+        }, 600);
+        room.aiStepTimeouts = [finishId];
         return;
       }
-      advanceToNextPlayer(room, {
-        msg: `${ai.name}이(가) 타일 ${proMove.placedIds.size}개를 내려놓았습니다.`,
-        tone: 'info',
-      });
-      return;
     }
   }
 
   if (room.pool.length > 0) {
     drawTileFromPool(room, ai);
-    room.recentAITileIds = new Set();
-    room.consecutivePasses++;
-    advanceToNextPlayer(room, { msg: `${ai.name}이(가) 타일 1장을 뽑았습니다.`, tone: 'info' });
-  } else {
-    room.recentAITileIds = new Set();
-    room.consecutivePasses++;
-    advanceToNextPlayer(room, { msg: `${ai.name}이(가) 패스했습니다.`, tone: 'info' });
   }
+  room.recentAITileIds = new Set();
+  room.consecutivePasses++;
+  advanceToNextPlayer(room, { msg: `${ai.name}님이 타일 1장을 뽑았습니다.`, tone: 'info' });
 }
 
-// ==================== ROOM LIFECYCLE HELPERS ====================
-function closeRoomByHost(room, hostName) {
-  clearRoomTimers(room);
-  room.phase = 'ended';
-  room.endedAt = Date.now();
+// ==================== ANTI-CHEAT CONSERVATION CHECKS ====================
+function verifyRackOrderOnly(oldRack, newRack) {
+  if (!Array.isArray(newRack) || newRack.length < 20 || newRack.length > 120) return null;
+  const oldMap = new Map();
+  for (const t of oldRack) {
+    if (t) oldMap.set(t.id, t);
+  }
+  const seen = new Set();
+  const sanitized = newRack.map((t) => {
+    if (!t) return null;
+    if (!oldMap.has(t.id) || seen.has(t.id)) return undefined;
+    seen.add(t.id);
+    return oldMap.get(t.id);
+  });
+  if (sanitized.includes(undefined) || seen.size !== oldMap.size) return null;
+  return sanitized;
+}
 
-  const reason = `${hostName}님(방장)이 게임을 종료했습니다. 대화방으로 돌아갑니다.`;
-  io.to(room.code).emit('room:closed', { reason });
+function verifyBoardAndRackMove(room, player, newBoard, newRack) {
+  if (!Array.isArray(newBoard) || newBoard.length !== GRID_ROWS) return null;
+  if (!Array.isArray(newRack) || newRack.length < 20 || newRack.length > 120) return null;
 
-  const roomSockets = io.sockets.adapter.rooms.get(room.code);
-  if (roomSockets) {
-    for (const sid of [...roomSockets]) {
-      const sock = io.sockets.sockets.get(sid);
-      if (sock) {
-        sock.leave(room.code);
-        if (sock.data && sock.data.roomCode === room.code) {
-          sock.data.roomCode = null;
-        }
+  const allowedMap = new Map();
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      if (room.board[r][c]) allowedMap.set(room.board[r][c].id, room.board[r][c]);
+    }
+  }
+  for (const t of player.rack) {
+    if (t) allowedMap.set(t.id, t);
+  }
+
+  const seen = new Set();
+  const cleanBoard = [];
+  for (let r = 0; r < GRID_ROWS; r++) {
+    if (!Array.isArray(newBoard[r]) || newBoard[r].length !== GRID_COLS) return null;
+    const row = [];
+    for (let c = 0; c < GRID_COLS; c++) {
+      const cell = newBoard[r][c];
+      if (!cell) {
+        row.push(null);
+      } else {
+        if (!allowedMap.has(cell.id) || seen.has(cell.id)) return null;
+        seen.add(cell.id);
+        row.push(allowedMap.get(cell.id));
       }
     }
+    cleanBoard.push(row);
   }
 
-  pushLobbyMessage({
-    type: 'system',
-    text: `방 ${room.code} (${hostName}님의 방)이 종료되었습니다.`,
-    timestamp: Date.now(),
-  });
-
-  broadcastLobbyUpdate();
-
-  setTimeout(() => {
-    const cur = rooms.get(room.code);
-    if (cur && cur.phase === 'ended') {
-      rooms.delete(room.code);
-      broadcastLobbyUpdate();
+  const cleanRack = [];
+  for (const cell of newRack) {
+    if (!cell) {
+      cleanRack.push(null);
+    } else {
+      if (!allowedMap.has(cell.id) || seen.has(cell.id)) return null;
+      if (!room.playedFromRackIds.has(cell.id)) return null;
+      seen.add(cell.id);
+      cleanRack.push(allowedMap.get(cell.id));
     }
-  }, ENDED_ROOM_TTL_MS);
-}
-
-function detachSocketFromCurrentRoom(socket, isDisconnect = false) {
-  const code = socket.data?.roomCode;
-  const sessionId = socket.data?.sessionId;
-  if (!code) return;
-
-  const room = rooms.get(code);
-  socket.leave(code);
-  socket.data.roomCode = null;
-  if (!room || room.phase === 'ended') return;
-
-  const specIdx = room.spectators.findIndex((s) => s.sessionId === sessionId || s.socketId === socket.id);
-  if (specIdx !== -1) {
-    const [removed] = room.spectators.splice(specIdx, 1);
-    io.to(room.code).emit('room:toast', { msg: `👁️ ${removed.name}님이 관전을 종료했습니다.`, tone: 'info' });
-    pushRoomMessage(room, {
-      type: 'system',
-      text: `👁️ ${removed.name}님이 관전을 종료했습니다.`,
-      timestamp: Date.now(),
-    });
-    broadcastRoom(room);
-    broadcastLobbyUpdate();
-    return;
   }
 
-  const pIdx = room.players.findIndex((p) => !p.isAI && (p.sessionId === sessionId || p.socketId === socket.id));
-  if (pIdx === -1) return;
-  const player = room.players[pIdx];
-
-  if (room.phase === 'waiting' && !isDisconnect) {
-    room.players.splice(pIdx, 1);
-    if (room.players.length === 0) {
-      clearRoomTimers(room);
-      room.phase = 'ended';
-      room.endedAt = Date.now();
-      broadcastLobbyUpdate();
-      setTimeout(() => {
-        const cur = rooms.get(room.code);
-        if (cur && cur.phase === 'ended') {
-          rooms.delete(room.code);
-          broadcastLobbyUpdate();
-        }
-      }, ENDED_ROOM_TTL_MS);
-      return;
-    }
-    if (room.hostSessionId === player.sessionId) {
-      room.hostSessionId = room.players[0].sessionId;
-      room.hostName = room.players[0].name;
-    }
-    io.to(room.code).emit('room:toast', { msg: `${player.name}님이 대기실을 나갔습니다.`, tone: 'info' });
-    broadcastRoom(room);
-    broadcastLobbyUpdate();
-  } else {
-    player.connected = false;
-    player.socketId = null;
-    broadcastRoom(room);
-  }
+  if (seen.size !== allowedMap.size) return null;
+  return { board: cleanBoard, rack: cleanRack };
 }
 
 // ==================== SOCKET.IO HANDLERS ====================
+function hasAnyConnectedHuman(room) {
+  return (
+    room.players.some((p) => !p.isAI && p.connected) ||
+    (room.spectators || []).some((s) => s.connected)
+  );
+}
+
+function cleanupRoomIfEmpty(code) {
+  const room = rooms.get(code);
+  if (!room) return;
+  if (!hasAnyConnectedHuman(room)) {
+    if (room.cleanupTimeout) clearTimeout(room.cleanupTimeout);
+    room.cleanupTimeout = setTimeout(() => {
+      const r = rooms.get(code);
+      if (r && !hasAnyConnectedHuman(r)) {
+        clearRoomTimers(r);
+        rooms.delete(code);
+        broadcastLobbyUpdate();
+      }
+    }, 1000 * 60 * 10);
+  }
+}
+
 io.on('connection', (socket) => {
-  socket.data = { sessionId: null, name: '플레이어', roomCode: null };
+  socket.on('lobby:enter', ({ name, sessionId } = {}, cb = () => {}) => {
+    const cleanName = String(name || '플레이어').trim().slice(0, 14) || '플레이어';
+    const sid = String(sessionId || socket.id);
+    const prev = lobbyUsers.get(socket.id);
 
-  // 1. Enter Rummikub Club Lobby
-  socket.on('lobby:enter', ({ name, sessionId } = {}, cb) => {
-    try {
-      const cleanName = sanitizeName(name);
-      const sid = String(sessionId || socket.id);
-      socket.data.sessionId = sid;
-      socket.data.name = cleanName;
+    socket.data.playerName = cleanName;
+    socket.data.sessionId = sid;
+    socket.join('lobby');
+    lobbyUsers.set(socket.id, { sessionId: sid, name: cleanName, socketId: socket.id });
 
-      const existing = lobbyUsers.get(sid);
-      const isFirstJoin = !existing;
-      if (existing) {
-        existing.name = cleanName;
-        existing.socketIds.add(socket.id);
-      } else {
-        lobbyUsers.set(sid, { sessionId: sid, name: cleanName, socketIds: new Set([socket.id]) });
-      }
-
-      if (isFirstJoin) {
-        pushLobbyMessage({
-          type: 'system',
-          text: `${cleanName}님이 루미큐브 클럽에 입장했습니다.`,
-          timestamp: Date.now(),
-        });
-      }
-
-      broadcastLobbyUpdate();
-      if (typeof cb === 'function') {
-        cb({
-          ok: true,
-          messages: lobbyMessages,
-          users: getLobbyUsersSnapshot(),
-          rooms: getLobbyRoomsSnapshot(),
-        });
-      }
-    } catch (err) {
-      console.error('[lobby:enter error]', err);
-      if (typeof cb === 'function') cb({ error: '클럽 입장 중 오류가 발생했습니다.' });
+    if (!prev) {
+      pushLobbySystemMessage(`${cleanName}님이 루미큐브 클럽에 입장했습니다.`);
+    } else if (prev.name !== cleanName) {
+      pushLobbySystemMessage(`${prev.name}님이 닉네임을 ${cleanName}(으)로 변경했습니다.`);
     }
+
+    cb({
+      ok: true,
+      name: cleanName,
+      messages: lobbyMessages,
+      users: getLobbyUsersList(),
+      rooms: getPublicRoomsList(),
+    });
+    broadcastLobbyUpdate();
   });
 
-  // 2. Refresh Open Rooms List
-  socket.on('lobby:getRooms', (_payload, cb) => {
-    if (typeof cb === 'function') {
-      cb({
-        ok: true,
-        users: getLobbyUsersSnapshot(),
-        rooms: getLobbyRoomsSnapshot(),
-      });
-    }
-  });
+  socket.on('lobby:chat', ({ text } = {}, cb = () => {}) => {
+    const cleanText = String(text || '').trim().slice(0, 200);
+    if (!cleanText) return cb({ error: '메시지를 입력하세요.' });
 
-  // 3. Club Chat Message
-  socket.on('lobby:chat', ({ text } = {}, cb) => {
-    const cleanText = sanitizeChatText(text);
-    if (!cleanText) return;
+    const senderName = socket.data.playerName || '플레이어';
+    const sid = socket.data.sessionId || socket.id;
     pushLobbyMessage({
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type: 'chat',
-      senderName: socket.data.name || '플레이어',
-      sessionId: socket.data.sessionId || socket.id,
+      senderName,
+      sessionId: sid,
       text: cleanText,
+      roomCode: null,
       timestamp: Date.now(),
     });
-    if (typeof cb === 'function') cb({ ok: true });
+    cb({ ok: true });
   });
 
-  // 4. Create Room
-  socket.on('room:create', ({ name, maxPlayers, sessionId } = {}, cb) => {
-    try {
-      detachSocketFromCurrentRoom(socket, false);
+  socket.on('lobby:getRooms', (_payload, cb = () => {}) => {
+    cb({
+      ok: true,
+      users: getLobbyUsersList(),
+      rooms: getPublicRoomsList(),
+    });
+  });
 
-      const cleanName = sanitizeName(name || socket.data.name);
-      const sid = String(sessionId || socket.data.sessionId || socket.id);
-      const cap = Math.max(2, Math.min(4, parseInt(maxPlayers, 10) || 4));
-      const code = generateRoomCode();
+  socket.on('room:create', ({ name, maxPlayers, sessionId }, cb = () => {}) => {
+    const cleanName = String(name || socket.data.playerName || '플레이어').trim().slice(0, 14) || '플레이어';
+    const maxP = Math.max(2, Math.min(4, parseInt(maxPlayers, 10) || 4));
+    const sid = String(sessionId || socket.id);
+    const code = generateRoomCode();
 
-      socket.data.sessionId = sid;
-      socket.data.name = cleanName;
-      socket.data.roomCode = code;
-
-      const room = {
-        code,
-        phase: 'waiting',
-        maxPlayers: cap,
-        hostSessionId: sid,
-        hostName: cleanName,
-        players: [
-          {
-            sessionId: sid,
-            socketId: socket.id,
-            name: cleanName,
-            isAI: false,
-            connected: true,
-            rack: Array(20).fill(null),
-            hasMelded: false,
-          },
-        ],
-        spectators: [],
-        pool: [],
-        board: createEmptyBoard(),
-        currentPlayerIndex: 0,
-        timeLeft: TURN_SECONDS,
-        turnDeadline: null,
-        turnSnapshot: null,
-        playedFromRackIds: new Set(),
-        recentAITileIds: new Set(),
-        consecutivePasses: 0,
-        finalRoundJustTriggered: false,
-        finalRoundTurnsLeft: null,
-        finalRoundTriggerName: null,
-        gameOverData: null,
-        chatMessages: [
-          {
-            type: 'system',
-            text: `${cleanName}님이 ${cap}인 게임방을 생성했습니다.`,
-            timestamp: Date.now(),
-          },
-        ],
-        timerInterval: null,
-        aiTimeout: null,
-        turnProcessing: false,
-        createdAt: Date.now(),
-        endedAt: null,
-      };
-
-      rooms.set(code, room);
-      socket.join(code);
-
-      pushLobbyMessage({
-        type: 'system',
-        text: `🎮 ${cleanName}님이 ${cap}인 게임방을 열었습니다!`,
-        roomCode: code,
-        timestamp: Date.now(),
-      });
-
-      broadcastRoom(room);
-      broadcastLobbyUpdate();
-
-      if (typeof cb === 'function') cb({ ok: true, code });
-    } catch (err) {
-      console.error('[room:create error]', err);
-      // 5. Join Room (Player in waiting room, or Spectator in ongoing/full room)
-  socket.on('room:join', ({ code, name, sessionId } = {}, cb) => {
-    try {
-      const cleanCode = String(code || '').replace(/\D/g, '').slice(0, 4);
-      const room = rooms.get(cleanCode);
-      if (!room) {
-        if (typeof cb === 'function') cb({ error: '존재하지 않는 방 코드입니다.' });
-        return;
-      }
-      if (room.phase === 'ended' || room.phase === 'gameover') {
-        if (typeof cb === 'function') cb({ error: '이미 종료된 방입니다.' });
-        return;
-      }
-
-      const cleanName = sanitizeName(name || socket.data.name);
-      const sid = String(sessionId || socket.data.sessionId || socket.id);
-
-      if (socket.data.roomCode && socket.data.roomCode !== cleanCode) {
-        detachSocketFromCurrentRoom(socket, false);
-      }
-
-      socket.data.sessionId = sid;
-      socket.data.name = cleanName;
-      socket.data.roomCode = cleanCode;
-      socket.join(cleanCode);
-
-      // Rejoin as existing player
-      const existingPlayer = room.players.find((p) => !p.isAI && p.sessionId === sid);
-      if (existingPlayer) {
-        existingPlayer.socketId = socket.id;
-        existingPlayer.connected = true;
-        existingPlayer.name = cleanName;
-        broadcastRoom(room);
-        if (typeof cb === 'function') cb({ ok: true, code: cleanCode, spectator: false });
-        return;
-      }
-
-      // Rejoin as existing spectator
-      const existingSpec = room.spectators.find((s) => s.sessionId === sid);
-      if (existingSpec) {
-        existingSpec.socketId = socket.id;
-        existingSpec.name = cleanName;
-        broadcastRoom(room);
-        if (typeof cb === 'function') cb({ ok: true, code: cleanCode, spectator: true });
-        return;
-      }
-
-      // Join as player if waiting room has open seat
-      if (room.phase === 'waiting' && room.players.length < room.maxPlayers) {
-        room.players.push({
+    const room = {
+      code,
+      createdAt: Date.now(),
+      phase: 'waiting',
+      maxPlayers: maxP,
+      aiDifficulty: 'pro',
+      hostSessionId: sid,
+      players: [
+        {
           sessionId: sid,
           socketId: socket.id,
           name: cleanName,
           isAI: false,
           connected: true,
-          rack: Array(20).fill(null),
+          hasLeft: false,
           hasMelded: false,
-        });
-        io.to(cleanCode).emit('room:toast', { msg: `${cleanName}님이 방에 입장했습니다.`, tone: 'success' });
-        pushRoomMessage(room, {
-          type: 'system',
-          text: `${cleanName}님이 입장했습니다.`,
-          timestamp: Date.now(),
-        });
-        broadcastRoom(room);
-        broadcastLobbyUpdate();
-        if (typeof cb === 'function') cb({ ok: true, code: cleanCode, spectator: false });
-        return;
-      }
+          rack: [],
+        },
+      ],
+      spectators: [],
+      pool: [],
+      board: createEmptyBoard(),
+      currentPlayerIndex: 0,
+      turnSnapshot: null,
+      playedFromRackIds: new Set(),
+      recentAITileIds: new Set(),
+      consecutivePasses: 0,
+      finalRoundJustTriggered: false,
+      finalRoundTurnsLeft: null,
+      finalRoundTriggerName: null,
+      finalRoundTriggerSessionId: null,
+      timeLeft: TURN_SECONDS,
+      timerInterval: null,
+      aiTimeout: null,
+      aiStepTimeouts: [],
+      cleanupTimeout: null,
+      messages: [],
+      gameOverData: null,
+    };
 
-      // Otherwise enter as live spectator (ongoing game or full waiting room)
-      room.spectators.push({
-        sessionId: sid,
-        socketId: socket.id,
-        name: cleanName,
-      });
-      io.to(cleanCode).emit('room:toast', {
-        msg: `👁️ ${cleanName}님이 관전자로 입장했습니다.`,
-        tone: 'info',
-      });
-      pushRoomMessage(room, {
-        type: 'system',
-        text: `👁️ ${cleanName}님이 관전자로 입장했습니다.`,
-        timestamp: Date.now(),
-      });
-      broadcastRoom(room);
-      broadcastLobbyUpdate();
-      if (typeof cb === 'function') cb({ ok: true, code: cleanCode, spectator: true });
-    } catch (err) {
-      console.error('[room:join error]', err);
-      if (typeof cb === 'function') cb({ error: '방 참여 중 오류가 발생했습니다.' });
-    }
+    rooms.set(code, room);
+    socket.data.roomCode = code;
+    socket.data.sessionId = sid;
+    socket.data.playerName = cleanName;
+    socket.join(code);
+
+    cb({ ok: true, code });
+    broadcastRoom(room);
+    pushLobbySystemMessage(`${cleanName}님이 새 게임방 [${code}] (${maxP}인)을 만들었습니다!`, code);
+    broadcastLobbyUpdate();
   });
 
-  // 6. Resync after reconnect / mobile tab return
-  socket.on('room:resync', ({ code, sessionId } = {}) => {
-    const cleanCode = String(code || socket.data.roomCode || '');
+  socket.on('room:join', ({ code, name, sessionId }, cb = () => {}) => {
+    const cleanCode = String(code || '').replace(/\D/g, '').slice(0, 4);
     const room = rooms.get(cleanCode);
-    if (!room || room.phase === 'ended') return;
+    if (!room) return cb({ error: '존재하지 않는 4자리 방 코드입니다.' });
 
-    const sid = String(sessionId || socket.data.sessionId || '');
-    const player = room.players.find((p) => !p.isAI && p.sessionId === sid);
-    const spec = room.spectators.find((s) => s.sessionId === sid);
-    if (!player && !spec) return;
+    const cleanName = String(name || socket.data.playerName || '플레이어').trim().slice(0, 14) || '플레이어';
+    const sid = String(sessionId || socket.id);
 
-    socket.data.sessionId = sid;
+    // 1. 기존 게임 플레이어가 재접속하는 경우 (플레이어 자리 유지)
+    const existing = room.players.find((p) => p.sessionId === sid);
+    if (existing) {
+      existing.socketId = socket.id;
+      existing.connected = true;
+      existing.hasLeft = false;
+      if (cleanName) existing.name = cleanName;
+      if (room.cleanupTimeout) {
+        clearTimeout(room.cleanupTimeout);
+        room.cleanupTimeout = null;
+      }
+      socket.data.roomCode = cleanCode;
+      socket.data.sessionId = sid;
+      socket.data.playerName = cleanName;
+      socket.join(cleanCode);
+      cb({ ok: true, code: cleanCode, reconnected: true, isSpectator: false });
+      broadcastRoom(room, { msg: `${existing.name}님이 다시 접속했습니다.`, tone: 'info' });
+      broadcastLobbyUpdate();
+      return;
+    }
+
+    // 2. 이미 게임 중인 방에 추가로 들어온 사람들(게임 플레이어 제외) -> 관전자 모드 입장
+    if (room.phase !== 'waiting') {
+      if (!Array.isArray(room.spectators)) room.spectators = [];
+      const existingSpec = room.spectators.find((s) => s.sessionId === sid);
+      if (existingSpec) {
+        existingSpec.socketId = socket.id;
+        existingSpec.connected = true;
+        existingSpec.name = cleanName;
+      } else {
+        room.spectators.push({
+          sessionId: sid,
+          socketId: socket.id,
+          name: cleanName,
+          connected: true,
+        });
+      }
+
+      if (room.cleanupTimeout) {
+        clearTimeout(room.cleanupTimeout);
+        room.cleanupTimeout = null;
+      }
+      socket.data.roomCode = cleanCode;
+      socket.data.sessionId = sid;
+      socket.data.playerName = cleanName;
+      socket.join(cleanCode);
+
+      cb({ ok: true, code: cleanCode, isSpectator: true });
+      broadcastRoom(room, { msg: `👀 ${cleanName}님이 관전자로 입장했습니다.`, tone: 'info' });
+      broadcastLobbyUpdate();
+      return;
+    }
+
+    // 3. 대기실 입장
+    if (room.players.length >= room.maxPlayers) {
+      return cb({ error: '방 정원이 가득 찼습니다.' });
+    }
+
+    room.players.push({
+      sessionId: sid,
+      socketId: socket.id,
+      name: cleanName,
+      isAI: false,
+      connected: true,
+      hasLeft: false,
+      hasMelded: false,
+      rack: [],
+    });
+
+    if (room.cleanupTimeout) {
+      clearTimeout(room.cleanupTimeout);
+      room.cleanupTimeout = null;
+    }
     socket.data.roomCode = cleanCode;
+    socket.data.sessionId = sid;
+    socket.data.playerName = cleanName;
     socket.join(cleanCode);
+
+    cb({ ok: true, code: cleanCode, isSpectator: false });
+    broadcastRoom(room, { msg: `${cleanName}님이 입장했습니다!`, tone: 'success' });
+    broadcastLobbyUpdate();
+  });
+
+  socket.on('room:start', ({ fillWithAI = false } = {}, cb = () => {}) => {
+    const code = socket.data.roomCode;
+    const sid = socket.data.sessionId;
+    const room = rooms.get(code);
+    if (!room) return cb({ error: '방을 찾을 수 없습니다.' });
+    if (room.hostSessionId !== sid) return cb({ error: '방장만 게임을 시작할 수 있습니다.' });
+
+    const res = startGameInRoom(room, Boolean(fillWithAI));
+    if (res.error) return cb(res);
+    cb({ ok: true });
+    broadcastLobbyUpdate();
+  });
+
+  socket.on('room:close', (_payload, cb = () => {}) => {
+    const code = socket.data.roomCode;
+    const sid = socket.data.sessionId;
+    const room = rooms.get(code);
+    if (!room) return cb({ error: '방을 찾을 수 없습니다.' });
+    if (room.hostSessionId !== sid) return cb({ error: '방 개설자만 방을 종료할 수 있습니다.' });
+
+    closeRoomCompletely(room, '방 개설자가 방을 종료했습니다.');
+    cb({ ok: true });
+  });
+
+  socket.on('room:resync', ({ code, sessionId } = {}, cb = () => {}) => {
+    const targetCode = String(code || socket.data.roomCode || '').replace(/\D/g, '').slice(0, 4);
+    const sid = String(sessionId || socket.data.sessionId || '');
+    const room = rooms.get(targetCode);
+    if (!room) return cb({ error: '방을 찾을 수 없습니다.' });
+
+    const player = room.players.find((p) => p.sessionId === sid);
+    const spectator = !player ? (room.spectators || []).find((s) => s.sessionId === sid) : null;
+    if (!player && !spectator) return cb({ error: '방 참가자가 아닙니다.' });
 
     if (player) {
       player.socketId = socket.id;
       player.connected = true;
-    } else if (spec) {
-      spec.socketId = socket.id;
+      player.hasLeft = false;
+    } else if (spectator) {
+      spectator.socketId = socket.id;
+      spectator.connected = true;
     }
 
-    if (room.phase === 'playing' && room.turnDeadline) {
+    socket.data.roomCode = targetCode;
+    socket.data.sessionId = sid;
+    socket.join(targetCode);
+
+    if (room.cleanupTimeout) {
+      clearTimeout(room.cleanupTimeout);
+      room.cleanupTimeout = null;
+    }
+
+    if (room.phase === 'playing' && !room.timerInterval && !room.players[room.currentPlayerIndex]?.hasLeft) {
+      startTurn(room);
+    } else if (room.phase === 'playing' && room.turnDeadline) {
       room.timeLeft = Math.max(0, Math.ceil((room.turnDeadline - Date.now()) / 1000));
     }
 
-    socket.emit('room:state', buildPersonalizedRoomState(room, sid));
+    socket.emit('room:state', buildRoomPayloadFor(room, sid));
     socket.emit('game:timer', {
       timeLeft: room.timeLeft,
       currentPlayerIndex: room.currentPlayerIndex,
     });
+    cb({ ok: true });
   });
 
-  // 7. Start Game (Host only)
-  socket.on('room:start', ({ fillWithAI } = {}, cb) => {
-    try {
-      const room = rooms.get(socket.data.roomCode);
-      if (!room || room.phase !== 'waiting') {
-        if (typeof cb === 'function') cb({ error: '대기실 상태가 아닙니다.' });
-        return;
-      }
-      if (room.hostSessionId !== socket.data.sessionId) {
-        if (typeof cb === 'function') cb({ error: '방장만 게임을 시작할 수 있습니다.' });
-        return;
-      }
-
-      if (fillWithAI) {
-        let aiIdx = 0;
-        while (room.players.length < room.maxPlayers) {
-          const baseName = AI_NAMES[aiIdx % AI_NAMES.length];
-          aiIdx++;
-          room.players.push({
-            sessionId: `ai-${room.code}-${aiIdx}`,
-            socketId: null,
-            name: baseName,
-            isAI: true,
-            connected: true,
-            rack: Array(20).fill(null),
-            hasMelded: false,
-          });
-        }
-      }
-
-      if (room.players.length < 2) {
-        if (typeof cb === 'function') cb({ error: '최소 2명 이상 필요합니다. (AI로 채우기를 이용해 보세요)' });
-        return;
-      }
-
-      startGameInRoom(room);
-      broadcastLobbyUpdate();
-      if (typeof cb === 'function') cb({ ok: true });
-    } catch (err) {
-      console.error('[room:start error]', err);
-      if (typeof cb === 'function') cb({ error: '게임 시작 중 오류가 발생했습니다.' });
-    }
-  });
-
-  // 8. Leave Room
-  socket.on('room:leave', () => {
-    detachSocketFromCurrentRoom(socket, false);
-  });
-
-  // 9. Close Room (Host can end game anytime)
-  socket.on('room:close', (_payload, cb) => {
-    try {
-      const room = rooms.get(socket.data.roomCode);
-      if (!room || room.phase === 'ended') {
-        if (typeof cb === 'function') cb({ error: '종료할 방이 없습니다.' });
-        return;
-      }
-      if (room.hostSessionId !== socket.data.sessionId) {
-        if (typeof cb === 'function') cb({ error: '방장만 게임을 종료할 수 있습니다.' });
-        return;
-      }
-      const host = room.players.find((p) => p.sessionId === room.hostSessionId);
-      closeRoomByHost(room, host ? host.name : socket.data.name || '방장');
-      if (typeof cb === 'function') cb({ ok: true });
-    } catch (err) {
-      console.error('[room:close error]', err);
-      if (typeof cb === 'function') cb({ error: '게임 종료 처리 중 오류가 발생했습니다.' });
-    }
-  });
-
-  // 10. In-Room Chat
-  socket.on('room:chat', ({ text } = {}, cb) => {
+  socket.on('game:syncRack', ({ rack }) => {
     const room = rooms.get(socket.data.roomCode);
-    if (!room || room.phase === 'ended') return;
-    const cleanText = sanitizeChatText(text);
-    if (!cleanText) return;
-    const isSpectator = room.spectators.some((s) => s.sessionId === socket.data.sessionId);
-    pushRoomMessage(room, {
-      type: 'chat',
-      senderName: socket.data.name || '플레이어',
-      sessionId: socket.data.sessionId || socket.id,
-      isSpectator,
-      text: cleanText,
-      timestamp: Date.now(),
-    });
-    if (typeof cb === 'function') cb({ ok: true });
-  });
-
-  // 11. Sync Rack Order
-  socket.on('game:syncRack', ({ rack } = {}) => {
-    const room = rooms.get(socket.data.roomCode);
-    if (!room || room.phase !== 'playing' || !Array.isArray(rack)) return;
-    const player = room.players.find((p) => !p.isAI && p.sessionId === socket.data.sessionId);
+    if (!room || room.phase !== 'playing') return;
+    const player = room.players.find((p) => p.sessionId === socket.data.sessionId);
     if (!player) return;
 
-    const oldIds = getRackTiles(player).map((t) => t.id).sort((a, b) => a - b);
-    const newTiles = rack.filter(Boolean);
-    const newIds = newTiles.map((t) => t.id).sort((a, b) => a - b);
-    if (oldIds.length !== newIds.length) return;
-    for (let i = 0; i < oldIds.length; i++) {
-      if (oldIds[i] !== newIds[i]) return;
-    }
-
-    const tileMap = new Map(getRackTiles(player).map((t) => [t.id, t]));
-    player.rack = rack.map((t) => (t ? tileMap.get(t.id) || null : null));
-  });
-
-  // 12. Sync Board + Rack Move
-  socket.on('game:syncMove', ({ board, rack } = {}, cb) => {
-    try {
-      const room = rooms.get(socket.data.roomCode);
-      if (!room || room.phase !== 'playing') {
-        if (typeof cb === 'function') cb({ error: '게임 진행 중이 아닙니다.' });
-        return;
-      }
-      const curr = room.players[room.currentPlayerIndex];
-      if (!curr || curr.isAI || curr.sessionId !== socket.data.sessionId) {
-        if (typeof cb === 'function') cb({ error: '내 차례가 아닙니다.' });
-        return;
-      }
-      if (!Array.isArray(board) || board.length !== GRID_ROWS || !Array.isArray(rack)) {
-        if (typeof cb === 'function') cb({ error: '잘못된 보드 데이터입니다.' });
-        return;
-      }
-
-      const authTileMap = new Map();
-      for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c < GRID_COLS; c++) {
-          if (room.board[r][c]) authTileMap.set(room.board[r][c].id, room.board[r][c]);
-        }
-      }
-      for (const t of getRackTiles(curr)) authTileMap.set(t.id, t);
-
-      const seenIds = new Set();
-      const sanitizedBoard = createEmptyBoard();
-      for (let r = 0; r < GRID_ROWS; r++) {
-        if (!Array.isArray(board[r]) || board[r].length !== GRID_COLS) {
-          if (typeof cb === 'function') cb({ error: '보드 행 크기가 올바르지 않습니다.' });
-          return;
-        }
-        for (let c = 0; c < GRID_COLS; c++) {
-          const t = board[r][c];
-          if (t) {
-            const auth = authTileMap.get(t.id);
-            if (!auth || seenIds.has(auth.id)) {
-              if (typeof cb === 'function') cb({ error: '타일 무결성 검증에 실패했습니다.' });
-              broadcastRoom(room);
-              return;
-            }
-            seenIds.add(auth.id);
-            sanitizedBoard[r][c] = auth;
-          }
-        }
-      }
-
-      const sanitizedRack = [];
-      for (let i = 0; i < rack.length; i++) {
-        const t = rack[i];
-        if (!t) {
-          sanitizedRack.push(null);
-          continue;
-        }
-        const auth = authTileMap.get(t.id);
-        if (!auth || seenIds.has(auth.id)) {
-          if (typeof cb === 'function') cb({ error: '타일 무결성 검증에 실패했습니다.' });
-          broadcastRoom(room);
-          return;
-        }
-        if (!room.playedFromRackIds.has(auth.id)) {
-          if (typeof cb === 'function') cb({ error: '바닥에 원래 있던 타일은 내 패로 가져올 수 없습니다.' });
-          broadcastRoom(room);
-          return;
-        }
-        seenIds.add(auth.id);
-        sanitizedRack.push(auth);
-      }
-
-      if (seenIds.size !== authTileMap.size) {
-        if (typeof cb === 'function') cb({ error: '누락된 타일이 감지되어 복구했습니다.' });
-        broadcastRoom(room);
-        return;
-      }
-
-      room.board = sanitizedBoard;
-      curr.rack = sanitizedRack;
-      broadcastRoom(room);
-      if (typeof cb === 'function') cb({ ok: true });
-    } catch (err) {
-      console.error('[game:syncMove error]', err);
-      if (typeof cb === 'function') cb({ error: '이동 처리 중 오류가 발생했습니다.' });
+    const verified = verifyRackOrderOnly(player.rack, rack);
+    if (verified) {
+      player.rack = verified;
     }
   });
 
-  // 13. Remote Drag Preview
+  socket.on('game:syncMove', ({ board, rack }, cb = () => {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || room.phase !== 'playing') return cb({ error: '게임 진행 중이 아닙니다.' });
+
+    const curr = room.players[room.currentPlayerIndex];
+    if (!curr || curr.sessionId !== socket.data.sessionId) {
+      return cb({ error: '내 차례가 아닙니다.' });
+    }
+
+    const verified = verifyBoardAndRackMove(room, curr, board, rack);
+    if (!verified) {
+      socket.emit('room:state', buildRoomPayloadFor(room, curr.sessionId));
+      return cb({ error: '유효하지 않은 이동입니다.' });
+    }
+
+    room.board = verified.board;
+    curr.rack = verified.rack;
+    cb({ ok: true });
+    io.to(room.code).emit('game:remoteDrag', { active: false });
+    broadcastRoom(room);
+  });
+
   socket.on('game:dragPreview', (payload = {}) => {
     const room = rooms.get(socket.data.roomCode);
     if (!room || room.phase !== 'playing') return;
     const curr = room.players[room.currentPlayerIndex];
-    if (!curr || curr.isAI || curr.sessionId !== socket.data.sessionId) return;
-    socket.to(room.code).emit('game:remoteDrag', payload);
-  });
+    if (!curr || curr.sessionId !== socket.data.sessionId) return;
 
-  // 14. End Turn
-  socket.on('game:endTurn', (_payload, cb) => {
-    try {
-      const room = rooms.get(socket.data.roomCode);
-      if (!room || room.phase !== 'playing') {
-        if (typeof cb === 'function') cb({ error: '게임 진행 중이 아닙니다.' });
-        return;
-      }
-      const curr = room.players[room.currentPlayerIndex];
-      if (!curr || curr.isAI || curr.sessionId !== socket.data.sessionId) {
-        if (typeof cb === 'function') cb({ error: '내 차례가 아닙니다.' });
-        return;
-      }
-
-      const evalRes = evaluateTurnState(room);
-
-      if (evalRes.playedCount === 0 && evalRes.allValid) {
-        if (room.pool.length > 0) {
-          drawTileFromPool(room, curr);
-          room.consecutivePasses++;
-          if (typeof cb === 'function') cb({ ok: true, action: 'draw' });
-          advanceToNextPlayer(room, { msg: `${curr.name}님이 타일 1장을 뽑았습니다.`, tone: 'info' });
-        } else {
-          room.consecutivePasses++;
-          if (typeof cb === 'function') cb({ ok: true, action: 'pass' });
-          advanceToNextPlayer(room, { msg: `${curr.name}님이 패스했습니다.`, tone: 'info' });
-        }
-        return;
-      }
-
-      if (evalRes.canConfirm) {
-        if (typeof cb === 'function') cb({ ok: true, action: 'confirm' });
-        confirmTurnSuccess(room);
-        return;
-      }
-
-      if (typeof cb === 'function') cb({ error: evalRes.reason || '유효하지 않은 배치입니다.' });
-    } catch (err) {
-      console.error('[game:endTurn error]', err);
-      if (typeof cb === 'function') cb({ error: '턴 종료 처리 중 오류가 발생했습니다.' });
+    if (!payload.active) {
+      socket.to(room.code).emit('game:remoteDrag', { active: false });
+      return;
     }
+
+    const row = Number(payload.row);
+    const col = Number(payload.col);
+    if (!Number.isFinite(row) || !Number.isFinite(col)) return;
+    const tiles = Array.isArray(payload.tiles) ? payload.tiles.slice(0, 13) : [];
+    if (tiles.length === 0) return;
+
+    socket.to(room.code).emit('game:remoteDrag', {
+      active: true,
+      playerName: curr.name,
+      row: Math.max(0, Math.min(GRID_ROWS - 1, Math.round(row))),
+      col: Math.max(0, Math.min(GRID_COLS - 1, Math.round(col))),
+      tiles,
+    });
   });
 
-  // 15. Play Again (Host only)
-  socket.on('game:playAgain', (_payload, cb) => {
-    try {
-      const room = rooms.get(socket.data.roomCode);
-      if (!room || room.phase !== 'gameover') {
-        if (typeof cb === 'function') cb({ error: '게임 종료 상태가 아닙니다.' });
+  socket.on('room:chat', ({ text } = {}, cb = () => {}) => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+    if (!room) return cb({ error: '참여 중인 방이 없습니다.' });
+
+    const cleanText = String(text || '').trim().slice(0, 200);
+    if (!cleanText) return cb({ error: '메시지를 입력하세요.' });
+
+    const sid = socket.data.sessionId || socket.id;
+    const player = room.players.find((p) => p.sessionId === sid);
+    const spectator = !player ? (room.spectators || []).find((s) => s.sessionId === sid) : null;
+    const senderName = (player && player.name) || (spectator && spectator.name) || socket.data.playerName || '플레이어';
+
+    const entry = {
+      id: `rmsg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      senderName,
+      sessionId: sid,
+      isSpectator: !player && Boolean(spectator),
+      text: cleanText,
+      timestamp: Date.now(),
+    };
+
+    if (!Array.isArray(room.messages)) room.messages = [];
+    room.messages.push(entry);
+    if (room.messages.length > 60) {
+      room.messages.splice(0, room.messages.length - 60);
+    }
+
+    io.to(room.code).emit('room:chatMessage', entry);
+    cb({ ok: true });
+  });
+
+  socket.on('game:endTurn', (_payload, cb = () => {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room || room.phase !== 'playing') return cb({ error: '게임 진행 중이 아닙니다.' });
+
+    const curr = room.players[room.currentPlayerIndex];
+    if (!curr || curr.sessionId !== socket.data.sessionId) {
+      return cb({ error: '내 차례가 아닙니다.' });
+    }
+
+    const evalRes = evaluateTurnState(room);
+    if (evalRes.playedCount === 0) {
+      if (!evalRes.allValid) {
+        cb({ error: '바닥에 미완성 세트가 있습니다. 유효하게 맞춘 뒤 뽑아주세요.' });
         return;
       }
-      if (room.hostSessionId !== socket.data.sessionId) {
-        if (typeof cb === 'function') cb({ error: '방장만 다시 시작할 수 있습니다.' });
-        return;
+      if (room.pool.length > 0) {
+        drawTileFromPool(room, curr);
+        room.consecutivePasses++;
+        cb({ ok: true, action: 'draw' });
+        advanceToNextPlayer(room, { msg: `${curr.name}님이 타일 1장을 뽑았습니다.`, tone: 'info' });
+      } else {
+        room.consecutivePasses++;
+        cb({ ok: true, action: 'pass' });
+        advanceToNextPlayer(room, { msg: `${curr.name}님이 패스했습니다.`, tone: 'info' });
       }
-      startGameInRoom(room);
+      return;
+    }
+
+    if (evalRes.canConfirm) {
+      cb({ ok: true, action: 'confirm' });
+      confirmTurnSuccess(room);
+      return;
+    }
+
+    cb({ error: evalRes.reason });
+  });
+
+  socket.on('game:playAgain', (_payload, cb = () => {}) => {
+    const room = rooms.get(socket.data.roomCode);
+    if (!room) return cb({ error: '방을 찾을 수 없습니다.' });
+    if (room.hostSessionId !== socket.data.sessionId) return cb({ error: '방장만 다시 시작할 수 있습니다.' });
+
+    const hadAI = room.players.some((p) => p.isAI);
+    const res = startGameInRoom(room, hadAI);
+    if (res.error) return cb(res);
+    cb({ ok: true });
+    broadcastLobbyUpdate();
+  });
+
+  socket.on('room:leave', () => {
+    const code = socket.data.roomCode;
+    const sid = socket.data.sessionId;
+    if (!code) return;
+    socket.leave(code);
+    socket.data.roomCode = null;
+
+    const room = rooms.get(code);
+    if (!room) return;
+
+    // 1. 관전자가 떠나는 경우
+    const specIdx = (room.spectators || []).findIndex((s) => s.sessionId === sid);
+    if (specIdx !== -1) {
+      const spec = room.spectators[specIdx];
+      room.spectators.splice(specIdx, 1);
+      broadcastRoom(room, { msg: `👀 ${spec.name}님이 관전을 종료했습니다.`, tone: 'info' });
       broadcastLobbyUpdate();
-      if (typeof cb === 'function') cb({ ok: true });
-    } catch (err) {
-      console.error('[game:playAgain error]', err);
-      if (typeof cb === 'function') cb({ error: '재시작 중 오류가 발생했습니다.' });
+      cleanupRoomIfEmpty(code);
+      return;
+    }
+
+    // 2. 대기실 플레이어가 떠나는 경우
+    if (room.phase === 'waiting') {
+      room.players = room.players.filter((p) => p.sessionId !== sid);
+      if (room.players.length === 0) {
+        clearRoomTimers(room);
+        rooms.delete(code);
+        broadcastLobbyUpdate();
+        return;
+      }
+      if (room.hostSessionId === sid) {
+        room.hostSessionId = room.players[0].sessionId;
+      }
+      broadcastRoom(room);
+      broadcastLobbyUpdate();
+      return;
+    }
+
+    // 3. 게임 중 / 종료 화면에서 플레이어가 직접 떠나는 경우
+    const p = room.players.find((x) => x.sessionId === sid);
+    if (p) {
+      p.connected = false;
+      p.socketId = null;
+      p.hasLeft = true;
+
+      if (room.hostSessionId === sid) {
+        const nextHost = room.players.find((x) => !x.isAI && x.connected && x.sessionId !== sid);
+        if (nextHost) {
+          room.hostSessionId = nextHost.sessionId;
+        }
+      }
+
+      const anyHumanPlayerConnected = room.players.some((x) => !x.isAI && x.connected);
+      if (!anyHumanPlayerConnected) {
+        closeRoomCompletely(room, '모든 플레이어가 방을 떠나 방이 종료되었습니다.');
+        return;
+      }
+
+      if (room.phase === 'playing' && room.players[room.currentPlayerIndex]?.sessionId === sid) {
+        if (room.turnSnapshot) {
+          room.board = cloneBoard(room.turnSnapshot.board);
+          p.rack = cloneRack(room.turnSnapshot.rack);
+        }
+        if (room.pool.length > 0) drawTileFromPool(room, p);
+        room.consecutivePasses++;
+        advanceToNextPlayer(room, { msg: `${p.name}님이 방을 떠났습니다.`, tone: 'info' });
+      } else {
+        broadcastRoom(room, { msg: `${p.name}님이 방을 떠났습니다.`, tone: 'info' });
+      }
+      broadcastLobbyUpdate();
     }
   });
 
-  // 16. Disconnect Cleanup
   socket.on('disconnect', () => {
-    try {
-      detachSocketFromCurrentRoom(socket, true);
-      const sid = socket.data?.sessionId;
-      if (sid && lobbyUsers.has(sid)) {
-        const entry = lobbyUsers.get(sid);
-        entry.socketIds.delete(socket.id);
-        if (entry.socketIds.size === 0) {
-          lobbyUsers.delete(sid);
+    const wasInLobby = lobbyUsers.delete(socket.id);
+    if (wasInLobby) broadcastLobbyUpdate();
+
+    const code = socket.data.roomCode;
+    const sid = socket.data.sessionId;
+    if (!code) return;
+    const room = rooms.get(code);
+    if (!room) return;
+
+    const specIdx = (room.spectators || []).findIndex((s) => s.sessionId === sid);
+    if (specIdx !== -1) {
+      room.spectators.splice(specIdx, 1);
+      broadcastRoom(room);
+      broadcastLobbyUpdate();
+      cleanupRoomIfEmpty(code);
+      return;
+    }
+
+    const p = room.players.find((x) => x.sessionId === sid);
+    if (p) {
+      p.connected = false;
+      p.socketId = null;
+      if (room.phase === 'waiting') {
+        room.players = room.players.filter((x) => x.sessionId !== sid);
+        if (room.players.length === 0) {
+          clearRoomTimers(room);
+          rooms.delete(code);
           broadcastLobbyUpdate();
+          return;
+        }
+        if (room.hostSessionId === sid) {
+          room.hostSessionId = room.players[0].sessionId;
         }
       }
-    } catch (err) {
-      console.error('[disconnect error]', err);
+      io.to(room.code).emit('game:remoteDrag', { active: false });
+      broadcastRoom(room);
+      broadcastLobbyUpdate();
+      cleanupRoomIfEmpty(code);
     }
   });
 });
 
-// ==================== SERVER START ====================
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, () => {
   console.log(`The Original Rummikub Multiplayer Server listening on port ${PORT}`);
 });
