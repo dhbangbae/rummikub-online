@@ -375,6 +375,7 @@ function buildRoomPayloadFor(room, targetSessionId) {
       tileCount: getRackTiles(p).length,
       isHost: p.sessionId === room.hostSessionId,
     })),
+    chatMessages: room.messages || [],
     gameOverData: room.gameOverData || null,
   };
 }
@@ -1141,6 +1142,7 @@ io.on('connection', (socket) => {
       aiTimeout: null,
       aiStepTimeouts: [],
       cleanupTimeout: null,
+      messages: [],
       gameOverData: null,
     };
 
@@ -1319,6 +1321,36 @@ io.on('connection', (socket) => {
       col: Math.max(0, Math.min(GRID_COLS - 1, Math.round(col))),
       tiles,
     });
+  });
+
+  socket.on('room:chat', ({ text } = {}, cb = () => {}) => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+    if (!room) return cb({ error: '참여 중인 방이 없습니다.' });
+
+    const cleanText = String(text || '').trim().slice(0, 200);
+    if (!cleanText) return cb({ error: '메시지를 입력하세요.' });
+
+    const sid = socket.data.sessionId || socket.id;
+    const player = room.players.find((p) => p.sessionId === sid);
+    const senderName = (player && player.name) || socket.data.playerName || '플레이어';
+
+    const entry = {
+      id: `rmsg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      senderName,
+      sessionId: sid,
+      text: cleanText,
+      timestamp: Date.now(),
+    };
+
+    if (!Array.isArray(room.messages)) room.messages = [];
+    room.messages.push(entry);
+    if (room.messages.length > 60) {
+      room.messages.splice(0, room.messages.length - 60);
+    }
+
+    io.to(room.code).emit('room:chatMessage', entry);
+    cb({ ok: true });
   });
 
   socket.on('game:endTurn', (_payload, cb = () => {}) => {
