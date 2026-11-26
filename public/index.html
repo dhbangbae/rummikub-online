@@ -410,6 +410,14 @@
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 999px; }
 
+    #inGameChatPanel, #inGameChatMessages, #lobbyChatMessages {
+      touch-action: pan-y;
+    }
+
+    #inputInGameChat, #inputChatMessage, #inputPlayerName, #inputRoomCode {
+      touch-action: auto;
+    }
+
     /* "축 승리!" Celebration Effects */
     @keyframes victoryPop {
       0% { transform: scale(0.35) rotate(-8deg); opacity: 0; }
@@ -471,6 +479,11 @@
     </div>
 
     <div class="flex items-center gap-1 pointer-events-auto">
+      <button id="btnInGameChat" type="button" class="hidden relative rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-emerald-200 hover:brightness-110 transition items-center gap-1" title="게임 중 채팅 열기/닫기">
+        <span>💬</span>
+        <span>채팅</span>
+        <span id="inGameChatBadge" class="hidden min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-black items-center justify-center leading-none">0</span>
+      </button>
       <button id="btnSound" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-xs font-bold text-blue-100 hover:brightness-110 transition" title="효과음 켜기/끄기">
         <span id="soundIcon">🔊</span>
       </button>
@@ -481,6 +494,41 @@
         « 대화방
       </button>
     </div>
+  </div>
+
+  <!-- IN-GAME CHAT PEEK BUBBLE (채팅창이 닫혀 있을 때 새 메시지 미리보기) -->
+  <button id="inGameChatPeek" type="button"
+    class="hidden fixed top-11 right-2 sm:right-3 z-40 max-w-[240px] sm:max-w-xs px-3 py-1.5 rounded-xl bg-slate-950/90 border border-emerald-400/60 text-left text-xs text-white shadow-2xl backdrop-blur-md hover:brightness-110 transition">
+    <div id="inGameChatPeekSender" class="text-[10px] font-extrabold text-emerald-300 truncate"></div>
+    <div id="inGameChatPeekText" class="text-xs font-medium text-blue-50 truncate"></div>
+  </button>
+
+  <!-- FLOATING IN-GAME CHAT PANEL -->
+  <div id="inGameChatPanel" class="hidden fixed bottom-2 right-2 sm:bottom-4 sm:right-4 z-40 w-[calc(100vw-16px)] max-w-xs sm:max-w-sm h-72 sm:h-80 rounded-2xl bg-[#09204d]/95 border border-blue-400/60 shadow-[0_14px_40px_rgba(2,8,28,0.85)] backdrop-blur-md flex-col overflow-hidden">
+    <div class="px-3.5 py-2.5 bg-gradient-to-b from-[#17468f] to-[#0c2a5e] border-b border-blue-400/35 flex items-center justify-between gap-2 shrink-0">
+      <div class="flex items-center gap-1.5 min-w-0">
+        <span class="text-sm">💬</span>
+        <span class="text-xs sm:text-sm font-black text-white truncate">방 채팅</span>
+        <span id="inGameChatRoomTag" class="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-400/45 text-amber-300 text-[10px] font-black tracking-wider">----</span>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <button type="button" data-quick-emoji="👍" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="최고!">👍</button>
+        <button type="button" data-quick-emoji="😂" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="ㅋㅋㅋ">😂</button>
+        <button type="button" data-quick-emoji="🔥" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="대박!">🔥</button>
+        <button type="button" data-quick-emoji="👏" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="박수">👏</button>
+        <button id="btnCloseInGameChat" type="button" class="ml-1 px-2 py-0.5 rounded-lg bg-blue-950/85 hover:bg-blue-800 border border-blue-400/35 text-xs font-black text-blue-100">✕</button>
+      </div>
+    </div>
+
+    <div id="inGameChatMessages" class="flex-1 min-h-0 overflow-y-auto custom-scroll p-3 space-y-2 bg-slate-950/30"></div>
+
+    <form id="inGameChatForm" class="p-2 bg-[#071a3e] border-t border-blue-400/30 flex items-center gap-1.5 shrink-0">
+      <input id="inputInGameChat" type="text" maxlength="200" autocomplete="off" placeholder="채팅 입력..."
+        class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-950/80 border border-blue-500/50 text-white text-xs sm:text-sm font-medium focus:outline-none focus:border-amber-400" />
+      <button type="submit" class="px-3 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs sm:text-sm shadow transition active:scale-95 shrink-0">
+        전송
+      </button>
+    </form>
   </div>
 
   <!-- MAIN TABLE AREA -->
@@ -1162,6 +1210,10 @@
     let lastPreviewEmitAt = 0;
     let lastTimerTickAt = Date.now();
     let resyncInFlight = false;
+    let inGameChatOpen = false;
+    let inGameUnreadCount = 0;
+    let inGameChatLoadedCode = null;
+    let inGamePeekTimer = null;
 
     const state = {
       code: null,
@@ -1274,6 +1326,16 @@
     const guestWaitMsg = document.getElementById('guestWaitMsg');
     const helpModal = document.getElementById('helpModal');
     const gameOverModal = document.getElementById('gameOverModal');
+    const btnInGameChat = document.getElementById('btnInGameChat');
+    const inGameChatBadge = document.getElementById('inGameChatBadge');
+    const inGameChatPanel = document.getElementById('inGameChatPanel');
+    const inGameChatRoomTag = document.getElementById('inGameChatRoomTag');
+    const inGameChatMessages = document.getElementById('inGameChatMessages');
+    const inGameChatForm = document.getElementById('inGameChatForm');
+    const inputInGameChat = document.getElementById('inputInGameChat');
+    const inGameChatPeek = document.getElementById('inGameChatPeek');
+    const inGameChatPeekSender = document.getElementById('inGameChatPeekSender');
+    const inGameChatPeekText = document.getElementById('inGameChatPeekText');
 
     // Restore saved nickname
     if (myPlayerName) inputPlayerName.value = myPlayerName;
@@ -1480,6 +1542,103 @@
         chatLobbyModal.classList.add('hidden');
         nicknameModal.classList.remove('hidden');
       }
+    }
+
+    // ==================== IN-GAME CHAT HELPERS ====================
+    function updateInGameChatBadge() {
+      if (inGameUnreadCount > 0 && !inGameChatOpen) {
+        inGameChatBadge.textContent = inGameUnreadCount > 99 ? '99+' : String(inGameUnreadCount);
+        inGameChatBadge.classList.remove('hidden');
+        inGameChatBadge.classList.add('flex');
+      } else {
+        inGameChatBadge.classList.add('hidden');
+        inGameChatBadge.classList.remove('flex');
+      }
+    }
+
+    function hideInGameChatPeek() {
+      inGameChatPeek.classList.add('hidden');
+      if (inGamePeekTimer) {
+        clearTimeout(inGamePeekTimer);
+        inGamePeekTimer = null;
+      }
+    }
+
+    function showInGameChatPeek(msg) {
+      if (!msg || inGameChatOpen || (state.phase !== 'playing' && state.phase !== 'gameover')) return;
+      inGameChatPeekSender.textContent = `💬 ${msg.senderName}`;
+      inGameChatPeekText.textContent = msg.text;
+      inGameChatPeek.classList.remove('hidden');
+      if (inGamePeekTimer) clearTimeout(inGamePeekTimer);
+      inGamePeekTimer = setTimeout(() => {
+        inGameChatPeek.classList.add('hidden');
+      }, 3600);
+    }
+
+    function openInGameChat() {
+      inGameChatOpen = true;
+      inGameUnreadCount = 0;
+      updateInGameChatBadge();
+      hideInGameChatPeek();
+      inGameChatRoomTag.textContent = state.code || '----';
+      inGameChatPanel.classList.remove('hidden');
+      inGameChatPanel.classList.add('flex');
+      inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+      setTimeout(() => inputInGameChat.focus(), 40);
+    }
+
+    function closeInGameChat() {
+      inGameChatOpen = false;
+      inGameChatPanel.classList.add('hidden');
+      inGameChatPanel.classList.remove('flex');
+    }
+
+    function toggleInGameChat() {
+      if (inGameChatOpen) closeInGameChat();
+      else openInGameChat();
+    }
+
+    function appendInGameChatMessage(msg, shouldScroll = true) {
+      if (!msg) return;
+      const isMe = msg.sessionId === sessionId;
+      const wrap = document.createElement('div');
+      wrap.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+      wrap.innerHTML = `
+        <div class="text-[10px] font-bold text-blue-200/75 mb-0.5 px-1">
+          ${isMe ? '나' : escapeHtml(msg.senderName)} · ${formatChatTime(msg.timestamp)}
+        </div>
+        <div class="max-w-[86%] px-2.5 py-1.5 rounded-2xl text-xs font-medium break-words shadow ${
+          isMe
+            ? 'bg-amber-400 text-slate-950 rounded-tr-sm font-bold'
+            : 'bg-blue-900/95 border border-blue-400/35 text-white rounded-tl-sm'
+        }">${escapeHtml(msg.text)}</div>
+      `;
+      inGameChatMessages.appendChild(wrap);
+      if (shouldScroll) {
+        inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+      }
+    }
+
+    function renderAllInGameMessages(messages) {
+      inGameChatMessages.innerHTML = '';
+      if (!Array.isArray(messages) || messages.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'text-center text-[11px] text-blue-200/65 py-6';
+        empty.textContent = '게임 중에도 친구들과 실시간으로 대화해 보세요!';
+        inGameChatMessages.appendChild(empty);
+      } else {
+        messages.forEach((m) => appendInGameChatMessage(m, false));
+      }
+      inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+    }
+
+    function sendInGameChat(text) {
+      if (!socket || !state.code) return;
+      const clean = String(text || '').trim();
+      if (!clean) return;
+      socket.emit('room:chat', { text: clean }, (res) => {
+        if (res && res.error) showToast(res.error, 'error');
+      });
     }
 
     // ==================== CORE TURN, RACK & SET HELPERS ====================
@@ -3793,6 +3952,10 @@
 
       if (state.phase === 'waiting') {
         stopVictoryEffects();
+        btnInGameChat.classList.add('hidden');
+        btnInGameChat.classList.remove('flex');
+        closeInGameChat();
+        hideInGameChatPeek();
         nicknameModal.classList.add('hidden');
         chatLobbyModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
@@ -3802,6 +3965,15 @@
       } else if (state.phase === 'playing') {
         stopVictoryEffects();
         lastTimerTickAt = Date.now();
+        btnInGameChat.classList.remove('hidden');
+        btnInGameChat.classList.add('flex');
+        inGameChatRoomTag.textContent = state.code || '----';
+        if (inGameChatLoadedCode !== state.code) {
+          inGameChatLoadedCode = state.code;
+          inGameUnreadCount = 0;
+          updateInGameChatBadge();
+          renderAllInGameMessages(payload.chatMessages || []);
+        }
         nicknameModal.classList.add('hidden');
         chatLobbyModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
@@ -3809,6 +3981,8 @@
         gameOverModal.classList.add('hidden');
         renderAll();
       } else if (state.phase === 'gameover') {
+        btnInGameChat.classList.remove('hidden');
+        btnInGameChat.classList.add('flex');
         nicknameModal.classList.add('hidden');
         chatLobbyModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
@@ -3838,6 +4012,18 @@
       });
       socket.on('lobby:chatMessage', (msg) => {
         appendLobbyChatMessage(msg, true);
+      });
+      socket.on('room:chatMessage', (msg) => {
+        if (inGameChatMessages.firstElementChild && inGameChatMessages.firstElementChild.textContent.includes('게임 중에도')) {
+          inGameChatMessages.innerHTML = '';
+        }
+        appendInGameChatMessage(msg, true);
+        if (!inGameChatOpen && msg.sessionId !== sessionId) {
+          inGameUnreadCount++;
+          updateInGameChatBadge();
+          showInGameChatPeek(msg);
+          playTick(false);
+        }
       });
       socket.on('room:state', (payload) => {
         lastTimerTickAt = Date.now();
@@ -4050,10 +4236,33 @@
       stopVictoryEffects();
       forceResetInteraction();
       clearLifted();
+      closeInGameChat();
+      hideInGameChatPeek();
+      btnInGameChat.classList.add('hidden');
+      btnInGameChat.classList.remove('flex');
+      inGameChatLoadedCode = null;
+      inGameUnreadCount = 0;
+      updateInGameChatBadge();
       state.code = null;
       state.phase = 'lobby';
       showChatLobbyView();
     }
+
+    btnInGameChat.addEventListener('click', toggleInGameChat);
+    document.getElementById('btnCloseInGameChat').addEventListener('click', closeInGameChat);
+    inGameChatPeek.addEventListener('click', openInGameChat);
+    inGameChatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = inputInGameChat.value.trim();
+      if (!text) return;
+      inputInGameChat.value = '';
+      sendInGameChat(text);
+    });
+    document.querySelectorAll('.quick-chat-emoji').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        sendInGameChat(btn.dataset.quickEmoji);
+      });
+    });
 
     document.getElementById('btnLeaveWaiting').addEventListener('click', leaveToLobby);
     document.getElementById('btnLobby').addEventListener('click', leaveToLobby);
@@ -4097,6 +4306,7 @@
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         clearLifted();
+        closeInGameChat();
         helpModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
       }
