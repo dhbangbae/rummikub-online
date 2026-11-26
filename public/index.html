@@ -422,6 +422,11 @@
       box-shadow: 0 0 18px rgba(74, 222, 128, 0.7), 0 4px 14px rgba(2, 10, 30, 0.7);
     }
 
+    .avatar-ring.spectate-selected {
+      background: linear-gradient(135deg, #38bdf8 0%, #bae6fd 50%, #0284c7 100%);
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.9), 0 4px 14px rgba(2, 10, 30, 0.75);
+    }
+
     #holdRingContainer {
       position: fixed;
       pointer-events: none;
@@ -641,8 +646,8 @@
   <!-- MAIN TABLE AREA -->
   <div class="relative z-10 flex-1 flex items-stretch min-h-0 w-full px-1 sm:px-2 pb-1.5 gap-1 sm:gap-2">
 
-    <!-- LEFT SIDEBAR: Player Avatars & 40s Circular Timer -->
-    <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-20 sm:w-[110px] z-20"></aside>
+    <!-- LEFT SIDEBAR: Player Avatars & 40s Circular Timer (Top-to-bottom Turn Order) -->
+    <aside id="playersBar" class="flex flex-col justify-between py-1 shrink-0 w-20 sm:w-[114px] z-20"></aside>
 
     <!-- CENTER COLUMN: Board + Wooden Rack / Spectator Bar -->
     <div class="flex-1 min-w-0 flex flex-col items-center justify-between gap-1 min-h-0">
@@ -672,15 +677,19 @@
       </main>
 
       <!-- Bottom Natural Wooden 2-Tier Rack / Spectator Bar -->
-      <section id="rackWrap" class="w-full flex items-center justify-center shrink-0 pt-1">
+      <section id="rackWrap" class="w-full flex flex-col items-center justify-center shrink-0 pt-1 gap-1">
         <div id="woodRack" class="wood-rack px-1.5 sm:px-2.5 pt-1 pb-2 max-w-full">
           <div id="rackRow0" class="wood-tier gap-0.5 pb-0.5"></div>
           <div id="rackRow1" class="wood-tier gap-0.5 pt-1 pb-0.5 border-b-0 shadow-none"></div>
-          <div class="wood-rack-logo">Rummikub</div>
+          <div id="woodRackLabel" class="wood-rack-logo">Rummikub</div>
         </div>
-        <div id="spectatorBottomBar" class="hidden items-center justify-center gap-2 sm:gap-3 px-4 py-2.5 rounded-2xl bg-slate-950/80 border border-sky-400/55 text-sky-100 text-xs sm:text-sm font-bold shadow-xl backdrop-blur-md">
+        <div id="spectatorBottomBar" class="hidden flex-wrap items-center justify-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-2xl bg-slate-950/85 border border-sky-400/55 text-sky-100 text-xs sm:text-sm font-bold shadow-xl backdrop-blur-md">
           <span class="px-2 py-0.5 rounded-full bg-sky-500/25 border border-sky-400/60 text-sky-300 text-[11px] font-black shrink-0">👀 관전 모드</span>
-          <span id="spectatorStatusInfo" class="truncate max-w-[200px] sm:max-w-xs">실시간으로 경기를 관전 중입니다</span>
+          <span id="spectatorStatusInfo" class="truncate max-w-[180px] sm:max-w-xs">실시간으로 경기를 관전 중입니다</span>
+          <span id="spectatorInspectHint" class="text-[11px] text-amber-200/90 font-bold">· 플레이어를 클릭하면 패를 볼 수 있어요</span>
+          <button id="btnCloseSpectateRack" type="button" class="hidden px-2 py-0.5 rounded-lg bg-rose-500/25 hover:bg-rose-500/40 border border-rose-400/60 text-rose-200 text-[11px] font-black transition">
+            패 닫기 ✕
+          </button>
           <span class="text-amber-300 font-black shrink-0">🂠 <span id="spectatorPoolCount">106</span></span>
         </div>
       </section>
@@ -900,10 +909,10 @@
 
         <div id="hostStartControls" class="hidden space-y-2">
           <button id="btnStartRoom" type="button" class="w-full py-3 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-lg transition">
-            현재 인원으로 시작하기
+            🎲 무작위 순서 추첨 후 시작하기
           </button>
           <button id="btnStartWithAI" type="button" class="w-full py-2.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/60 text-amber-200 font-extrabold text-xs transition">
-            🤖 빈 자리는 AI로 채우고 바로 시작
+            🤖 빈 자리는 AI로 채우고 무작위 순서로 시작
           </button>
         </div>
 
@@ -996,7 +1005,6 @@
     const STORAGE_NAME_KEY = 'rummikub_player_name';
     const STORAGE_SID_KEY = 'rummikub_session_id';
 
-    // Use sessionStorage for sessionId so multiple tabs in the same browser don't collide
     let sessionId = sessionStorage.getItem(STORAGE_SID_KEY);
     if (!sessionId) {
       sessionId = 'sid-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -1325,7 +1333,10 @@
       hostSessionId: null,
       players: [],
       myPlayerIndex: -1,
+      firstPlayerIndex: 0,
       isSpectator: false,
+      spectateTargetIndex: -1,
+      spectatorRacks: {},
       spectatorCount: 0,
       spectators: [],
       currentPlayerIndex: 0,
@@ -1385,8 +1396,11 @@
     const woodRack = document.getElementById('woodRack');
     const rackRow0 = document.getElementById('rackRow0');
     const rackRow1 = document.getElementById('rackRow1');
+    const woodRackLabel = document.getElementById('woodRackLabel');
     const spectatorBottomBar = document.getElementById('spectatorBottomBar');
     const spectatorStatusInfo = document.getElementById('spectatorStatusInfo');
+    const spectatorInspectHint = document.getElementById('spectatorInspectHint');
+    const btnCloseSpectateRack = document.getElementById('btnCloseSpectateRack');
     const spectatorPoolCount = document.getElementById('spectatorPoolCount');
     const rightControlsAside = document.getElementById('rightControlsAside');
     const playersBar = document.getElementById('playersBar');
@@ -1712,6 +1726,7 @@
       spectatorCountBadge.classList.add('hidden');
       meldStatusBadge.classList.remove('hidden');
       woodRack.classList.remove('hidden');
+      woodRackLabel.textContent = 'Rummikub';
       spectatorBottomBar.classList.add('hidden');
       spectatorBottomBar.classList.remove('flex');
       rightControlsAside.classList.remove('hidden');
@@ -1843,7 +1858,7 @@
         requestAnimationFrame(() => {
           computeBoardDimensions(false);
           renderBoard();
-          if (!state.isSpectator) renderRack();
+          renderRack();
         });
       }
     }
@@ -1868,7 +1883,7 @@
         requestAnimationFrame(() => {
           computeBoardDimensions(false);
           renderBoard();
-          if (!state.isSpectator) renderRack();
+          renderRack();
         });
       }
       if (focusInput) setTimeout(() => inputInGameChat.focus(), 40);
@@ -1885,7 +1900,7 @@
         requestAnimationFrame(() => {
           computeBoardDimensions(false);
           renderBoard();
-          if (!state.isSpectator) renderRack();
+          renderRack();
         });
       }
     }
@@ -2944,7 +2959,13 @@
       }
       return { type: 'rack', idx: bestIdx };
     }
+```
 
+---
+
+### [2부 / 2] `// ==================== TILE ELEMENT BUILDER ====================` ~ `</html>` 까지
+
+```javascript
     // ==================== TILE ELEMENT BUILDER ====================
     function createClassicJokerSVG(color, sizePx) {
       const stroke = color === 'red' ? '#c81912' : '#111827';
@@ -3074,6 +3095,35 @@
     }
 
     // ==================== RENDERING ====================
+    function getSpectatedPlayerRack(idx) {
+      if (idx < 0 || idx >= state.players.length) return null;
+      const p = state.players[idx];
+      if (!p) return null;
+      if (Array.isArray(p.rack)) return p.rack;
+      if (Array.isArray(p.tiles)) return p.tiles;
+      if (state.spectatorRacks && Array.isArray(state.spectatorRacks[idx])) return state.spectatorRacks[idx];
+      if (state.spectatorRacks && p.sessionId && Array.isArray(state.spectatorRacks[p.sessionId])) return state.spectatorRacks[p.sessionId];
+      return null;
+    }
+
+    function selectSpectatorTarget(idx) {
+      if (!state.isSpectator) return;
+      if (state.spectateTargetIndex === idx) {
+        state.spectateTargetIndex = -1;
+      } else {
+        state.spectateTargetIndex = idx;
+        if (socket && socket.connected) {
+          socket.emit('spectator:inspectPlayer', { playerIndex: idx }, (res) => {
+            if (res && Array.isArray(res.rack)) {
+              state.spectatorRacks[idx] = res.rack;
+              renderAll();
+            }
+          });
+        }
+      }
+      renderAll();
+    }
+
     function renderAll() {
       applySpectatorLayoutVisibility();
       computeBoardDimensions(interact.isDragging);
@@ -3103,16 +3153,27 @@
       if (state.isSpectator && inRoomView) {
         meldStatusBadge.classList.add('hidden');
         spectatorModeBadge.classList.remove('hidden');
-        woodRack.classList.add('hidden');
+        const hasInspectTarget = state.spectateTargetIndex >= 0 && Boolean(state.players[state.spectateTargetIndex]);
+        woodRack.classList.toggle('hidden', !hasInspectTarget);
         spectatorBottomBar.classList.remove('hidden');
         spectatorBottomBar.classList.add('flex');
+        btnCloseSpectateRack.classList.toggle('hidden', !hasInspectTarget);
+        if (hasInspectTarget) {
+          const targetPlayer = state.players[state.spectateTargetIndex];
+          spectatorInspectHint.textContent = `· 👁️ ${targetPlayer.name}님의 패 보는 중`;
+        } else {
+          spectatorInspectHint.textContent = '· 플레이어를 클릭하면 패를 볼 수 있어요';
+          woodRackLabel.textContent = 'Rummikub';
+        }
         rightControlsAside.classList.add('hidden');
       } else {
         meldStatusBadge.classList.remove('hidden');
         spectatorModeBadge.classList.add('hidden');
         woodRack.classList.remove('hidden');
+        woodRackLabel.textContent = 'Rummikub';
         spectatorBottomBar.classList.add('hidden');
         spectatorBottomBar.classList.remove('flex');
+        btnCloseSpectateRack.classList.add('hidden');
         rightControlsAside.classList.remove('hidden');
       }
     }
@@ -3121,12 +3182,15 @@
       playersBar.innerHTML = '';
       if (state.players.length === 0) return;
 
+      // 1등(선공)을 맨 위에 배치하고 진행 순서대로 위에서 아래로 자리 배정
+      const n = state.players.length;
+      const startIdx = (typeof state.firstPlayerIndex === 'number' && state.firstPlayerIndex >= 0 && state.firstPlayerIndex < n)
+        ? state.firstPlayerIndex
+        : 0;
       const ordered = [];
-      for (let i = 0; i < state.players.length; i++) {
-        if (i !== state.myPlayerIndex) ordered.push({ p: state.players[i], idx: i });
-      }
-      if (state.myPlayerIndex >= 0 && state.players[state.myPlayerIndex]) {
-        ordered.push({ p: state.players[state.myPlayerIndex], idx: state.myPlayerIndex });
+      for (let offset = 0; offset < n; offset++) {
+        const idx = (startIdx + offset) % n;
+        ordered.push({ p: state.players[idx], idx, turnOrder: offset + 1 });
       }
 
       const circ = 163.36;
@@ -3134,16 +3198,28 @@
       const dashOffset = circ * (1 - timerRatio);
       const ringColor = state.timeLeft <= 8 ? '#f43f5e' : state.timeLeft <= 15 ? '#facc15' : '#4ade80';
 
-      ordered.forEach(({ p, idx }) => {
+      ordered.forEach(({ p, idx, turnOrder }) => {
         const isCurr = idx === state.currentPlayerIndex && state.phase === 'playing';
         const isMe = idx === state.myPlayerIndex;
+        const isSpectated = state.isSpectator && state.spectateTargetIndex === idx;
         const count = isMe ? getMyRackTiles().length : (typeof p.tileCount === 'number' ? p.tileCount : 0);
         const av = AVATAR_STYLES[idx % AVATAR_STYLES.length];
 
         const seat = document.createElement('div');
-        seat.className = 'flex flex-col items-center gap-1';
+        seat.className = `flex flex-col items-center gap-1 transition-transform ${
+          state.isSpectator ? 'cursor-pointer hover:scale-105 active:scale-95' : ''
+        } ${isSpectated ? 'scale-105' : ''}`;
+        if (state.isSpectator) {
+          seat.title = `${p.name}님의 패 보기 (클릭)`;
+          seat.addEventListener('click', () => selectSpectatorTarget(idx));
+        }
+
+        const orderBadgeClass = turnOrder === 1
+          ? 'bg-amber-400 text-slate-950 border-white'
+          : 'bg-slate-900/95 text-blue-100 border-blue-400/60';
+
         seat.innerHTML = `
-          <div class="relative w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''}">
+          <div class="relative w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''} ${isSpectated ? 'spectate-selected' : ''}">
             <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-2xl sm:text-3xl shadow-inner relative overflow-hidden">
               <span class="${isCurr ? 'opacity-40' : ''}">${p.isAI ? av.emoji : '🧑'}</span>
               ${isCurr ? `<span id="activeAvatarTimer" class="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">${Math.max(0, state.timeLeft)}</span>` : ''}
@@ -3154,12 +3230,15 @@
                 <circle id="activeAvatarRing" cx="30" cy="30" r="26" fill="none" stroke="${ringColor}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${dashOffset}" />
               </svg>
             ` : ''}
+            <span class="absolute -top-1 -left-1 px-1.5 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black leading-none shadow ${orderBadgeClass}" title="${turnOrder}번 순서">${turnOrder}번</span>
             ${p.hasMelded ? '<span class="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-amber-400 border border-white text-xs font-black text-slate-950 flex items-center justify-center shadow" title="30점 첫 등록 완료">★</span>' : ''}
+            ${isSpectated ? '<span class="absolute -bottom-1 -left-1 px-1.5 py-0.5 rounded-full bg-sky-400 border border-white text-[9px] font-black text-slate-950 shadow">👁️</span>' : ''}
             ${p.hasLeft ? '<span class="absolute -bottom-1 -right-1 px-1 rounded bg-slate-700 text-[9px] font-black text-slate-200 shadow">퇴장</span>' : (!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 px-1 rounded bg-rose-600 text-[9px] font-black text-white shadow">오프라인</span>' : '')}
           </div>
-          <div class="px-2 py-0.5 rounded-lg bg-slate-950/75 border border-blue-400/35 text-xs sm:text-sm font-extrabold text-blue-50 flex items-center gap-1.5 max-w-full shadow">
-            <span class="truncate max-w-[48px] sm:max-w-[66px]">${escapeHtml(p.name)}</span>
-            <span class="text-amber-300 font-black text-sm sm:text-base">${count}</span>
+          <div class="px-2 py-0.5 rounded-lg ${isMe ? 'bg-amber-950/85 border-amber-400/80' : isSpectated ? 'bg-sky-950/90 border-sky-400' : 'bg-slate-950/75 border-blue-400/35'} border text-xs sm:text-sm font-extrabold text-blue-50 flex items-center gap-1 max-w-full shadow">
+            <span class="truncate max-w-[44px] sm:max-w-[62px]">${escapeHtml(p.name)}</span>
+            ${isMe ? '<span class="text-[9px] font-black text-amber-300 shrink-0">(나)</span>' : ''}
+            <span class="text-amber-300 font-black text-sm sm:text-base shrink-0">${count}</span>
           </div>
         `;
         playersBar.appendChild(seat);
@@ -3308,8 +3387,72 @@
     function renderRack() {
       rackRow0.innerHTML = '';
       rackRow1.innerHTML = '';
-      if (state.phase === 'lobby' || state.phase === 'waiting' || state.isSpectator) return;
+      if (state.phase === 'lobby' || state.phase === 'waiting') return;
 
+      // 관전 모드: 선택된 플레이어가 없으면 랙을 표시하지 않음
+      if (state.isSpectator) {
+        if (state.spectateTargetIndex < 0 || !state.players[state.spectateTargetIndex]) return;
+        const targetPlayer = state.players[state.spectateTargetIndex];
+        const rawRack = getSpectatedPlayerRack(state.spectateTargetIndex);
+
+        if (!Array.isArray(rawRack)) {
+          woodRackLabel.textContent = `👁️ ${targetPlayer.name}님의 패`;
+          const notice = document.createElement('div');
+          notice.className = 'px-3 py-3 text-xs font-extrabold text-amber-950 text-center';
+          notice.textContent = `${targetPlayer.name}님의 패 정보를 불러오는 중이거나 서버에서 아직 관전자 패를 전송하지 않았습니다.`;
+          rackRow0.appendChild(notice);
+          return;
+        }
+
+        const tilesOnly = rawRack.filter(Boolean);
+        woodRackLabel.textContent = `👁️ ${targetPlayer.name} (${tilesOnly.length}장)`;
+
+        const minSlots = 20;
+        const neededPerRow = Math.max(10, Math.ceil(tilesOnly.length / 2) + 1);
+        const targetLen = Math.max(minSlots, neededPerRow * 2);
+        let displayRack;
+        if (rawRack.some((x) => x === null)) {
+          displayRack = [...rawRack];
+          while (displayRack.length < targetLen) displayRack.push(null);
+          if (displayRack.length % 2 !== 0) displayRack.push(null);
+        } else {
+          displayRack = Array(targetLen).fill(null);
+          for (let i = 0; i < tilesOnly.length; i++) {
+            if (i < displayRack.length) displayRack[i] = tilesOnly[i];
+            else displayRack.push(tilesOnly[i]);
+          }
+          if (displayRack.length % 2 !== 0) displayRack.push(null);
+        }
+
+        const rowSize = Math.floor(displayRack.length / 2);
+        const isNarrow = window.innerWidth < 640;
+        const splitOffset = (inGameChatOpen && chatDisplayMode === 'split' && window.innerWidth >= 768) ? 320 : 0;
+        const sideSpace = (isNarrow ? 110 : 150) + splitOffset;
+        const availRackW = Math.max(180, window.innerWidth - sideSpace);
+        const maxTileH = Math.max(32, Math.min(62, Math.floor(window.innerHeight * 0.1)));
+        const maxTileWByH = Math.floor(maxTileH / 1.38);
+        const maxTileWByW = Math.floor((availRackW - rowSize * 2 - 16) / rowSize);
+        const tileW = Math.max(18, Math.min(48, maxTileWByW, maxTileWByH));
+        const tileH = Math.round(tileW * 1.38);
+
+        for (let i = 0; i < displayRack.length; i++) {
+          const slot = document.createElement('div');
+          slot.className = 'rack-slot shrink-0';
+          slot.style.width = `${tileW + 1}px`;
+          slot.style.height = `${tileH + 1}px`;
+          const tile = displayRack[i];
+          if (tile) {
+            const el = buildTileElement(tile, tileW, tileH);
+            el.style.cursor = 'default';
+            slot.appendChild(el);
+          }
+          if (i < rowSize) rackRow0.appendChild(slot);
+          else rackRow1.appendChild(slot);
+        }
+        return;
+      }
+
+      woodRackLabel.textContent = 'Rummikub';
       ensureMyRackCapacity();
       const rowSize = Math.floor(state.myRack.length / 2);
 
@@ -4149,7 +4292,7 @@
             for (let i = emptyPos; i > insertAt; i--) state.myRack[i] = state.myRack[i - 1];
             state.myRack[insertAt] = t;
             insertAt++;
-          } else {
+            } else {
             addTileToMyRack(t);
           }
         }
@@ -4305,6 +4448,8 @@
       }
 
       const prevPhase = state.phase;
+      const isNewGameStart = payload.phase === 'playing' && prevPhase !== 'playing';
+
       state.code = payload.code;
       state.phase = payload.phase;
       state.maxPlayers = payload.maxPlayers;
@@ -4326,6 +4471,27 @@
       state.evalState = payload.evalState || null;
       state.gameOverData = payload.gameOverData || null;
 
+      if (typeof payload.firstPlayerIndex === 'number') {
+        state.firstPlayerIndex = payload.firstPlayerIndex;
+      } else if (isNewGameStart) {
+        state.firstPlayerIndex = typeof payload.currentPlayerIndex === 'number' ? payload.currentPlayerIndex : 0;
+      } else if (state.firstPlayerIndex >= state.players.length) {
+        state.firstPlayerIndex = 0;
+      }
+
+      if (payload.spectatorRacks && typeof payload.spectatorRacks === 'object') {
+        state.spectatorRacks = { ...state.spectatorRacks, ...payload.spectatorRacks };
+      } else if (payload.playerRacks && typeof payload.playerRacks === 'object') {
+        state.spectatorRacks = { ...state.spectatorRacks, ...payload.playerRacks };
+      }
+
+      if (isNewGameStart && (prevPhase === 'waiting' || prevPhase === 'gameover')) {
+        const firstP = state.players[state.firstPlayerIndex];
+        if (firstP) {
+          showToast(`🎲 순서 추첨 완료! 1등(선공): ${firstP.name}님`, 'success');
+        }
+      }
+
       if (!isMyTurn() && lifted.active && lifted.originType === 'board') {
         clearLifted();
       }
@@ -4333,7 +4499,12 @@
       if (state.isSpectator) {
         state.myRack = Array(20).fill(null);
         clearLifted();
+        if (state.spectateTargetIndex >= state.players.length) {
+          state.spectateTargetIndex = -1;
+        }
       } else {
+        state.spectateTargetIndex = -1;
+        state.spectatorRacks = {};
         const incomingRack = Array.isArray(payload.myRack) ? payload.myRack : Array(20).fill(null);
         const localIds = state.myRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
         const serverIds = incomingRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
@@ -4429,6 +4600,16 @@
         resyncInFlight = false;
         lastTimerTickAt = Date.now();
         applyServerRoomState(payload);
+      });
+      socket.on('spectator:playerRack', (payload) => {
+        if (!state.isSpectator || !payload) return;
+        const idx = typeof payload.playerIndex === 'number' ? payload.playerIndex : -1;
+        if (idx >= 0 && Array.isArray(payload.rack)) {
+          state.spectatorRacks[idx] = payload.rack;
+          if (state.spectateTargetIndex === idx) {
+            renderRack();
+          }
+        }
       });
       socket.on('room:toast', ({ msg, tone }) => {
         if (msg) showToast(msg, tone || 'info');
@@ -4546,7 +4727,7 @@
           showLobbyError(res.error);
           showToast(res.error, 'error');
         } else if (res && res.isSpectator) {
-          showToast(`방 [${code}]에 관전자 모드로 입장했습니다.`, 'info');
+          showToast(`방 [${code}]에 관전자 모드로 입장했습니다. 플레이어를 클릭해 패를 확인하세요!`, 'info');
         }
       });
     }
@@ -4659,7 +4840,7 @@
     document.getElementById('btnStartRoom').addEventListener('click', () => {
       if (!socket) return;
       ensureAudio();
-      socket.emit('room:start', { fillWithAI: false }, (res) => {
+      socket.emit('room:start', { fillWithAI: false, randomizeOrder: true }, (res) => {
         if (res && res.error) showToast(res.error, 'error');
       });
     });
@@ -4667,9 +4848,14 @@
     document.getElementById('btnStartWithAI').addEventListener('click', () => {
       if (!socket) return;
       ensureAudio();
-      socket.emit('room:start', { fillWithAI: true }, (res) => {
+      socket.emit('room:start', { fillWithAI: true, randomizeOrder: true }, (res) => {
         if (res && res.error) showToast(res.error, 'error');
       });
+    });
+
+    btnCloseSpectateRack.addEventListener('click', () => {
+      state.spectateTargetIndex = -1;
+      renderAll();
     });
 
     function leaveToLobby(emitLeave = true) {
@@ -4687,7 +4873,10 @@
       globalUnreadCount = 0;
       state.code = null;
       state.phase = 'lobby';
+      state.firstPlayerIndex = 0;
       state.isSpectator = false;
+      state.spectateTargetIndex = -1;
+      state.spectatorRacks = {};
       state.spectatorCount = 0;
       state.spectators = [];
       showChatLobbyView();
@@ -4831,7 +5020,7 @@
       computeBoardDimensions(false);
       if (state.phase === 'playing' || state.phase === 'gameover') {
         renderBoard();
-        if (!state.isSpectator) renderRack();
+        renderRack();
       }
     });
 
