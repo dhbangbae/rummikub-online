@@ -19,6 +19,7 @@
       --tile-bot: #e6e0d2;
       --tile-bevel: #bcb4a2;
       --pill-border: rgba(145, 186, 238, 0.55);
+      --split-chat-w: 320px;
     }
 
     * {
@@ -31,6 +32,7 @@
     input, textarea {
       -webkit-user-select: text;
       user-select: text;
+      touch-action: auto;
     }
 
     html, body {
@@ -44,6 +46,33 @@
       color: #f8fafc;
       overscroll-behavior: none;
       touch-action: none;
+    }
+
+    /* Split-screen chat layout offset */
+    body.chat-split-open {
+      padding-right: var(--split-chat-w);
+    }
+
+    body.chat-split-open #waitingModal,
+    body.chat-split-open #gameOverModal,
+    body.chat-split-open #helpModal {
+      right: var(--split-chat-w);
+    }
+
+    @media (max-width: 767px) {
+      :root {
+        --split-chat-w: 100vw;
+      }
+      body.chat-split-open {
+        padding-right: 0;
+        padding-bottom: 42vh;
+      }
+      body.chat-split-open #waitingModal,
+      body.chat-split-open #gameOverModal,
+      body.chat-split-open #helpModal {
+        right: 0;
+        bottom: 42vh;
+      }
     }
 
     /* Classic Royal Blue Velvet Felt Table */
@@ -410,12 +439,58 @@
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 999px; }
 
-    #inGameChatPanel, #inGameChatMessages, #lobbyChatMessages {
+    /* Persistent Floating / Split Chat Panel */
+    #inGameChatPanel {
       touch-action: pan-y;
     }
 
-    #inputInGameChat, #inputChatMessage, #inputPlayerName, #inputRoomCode {
-      touch-action: auto;
+    #inGameChatPanel.chat-mode-floating {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      width: min(330px, calc(100vw - 20px));
+      height: min(340px, 46vh);
+      border-radius: 16px;
+    }
+
+    #inGameChatPanel.chat-mode-split {
+      position: fixed;
+      top: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      bottom: 0 !important;
+      width: var(--split-chat-w);
+      height: 100vh;
+      border-radius: 0;
+      border-top: 0;
+      border-right: 0;
+      border-bottom: 0;
+    }
+
+    @media (max-width: 767px) {
+      #inGameChatPanel.chat-mode-split {
+        top: auto !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw;
+        height: 42vh;
+        border-radius: 16px 16px 0 0;
+        border-top: 1.5px solid rgba(96, 165, 250, 0.65);
+      }
+    }
+
+    #inGameChatMessages, #lobbyChatMessages {
+      touch-action: pan-y;
+    }
+
+    #inGameChatHeader.draggable-chat-header {
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #inGameChatHeader.draggable-chat-header:active {
+      cursor: grabbing;
     }
 
     /* "축 승리!" Celebration Effects */
@@ -479,7 +554,7 @@
     </div>
 
     <div class="flex items-center gap-1 pointer-events-auto">
-      <button id="btnInGameChat" type="button" class="hidden relative rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-emerald-200 hover:brightness-110 transition items-center gap-1" title="게임 중 채팅 열기/닫기">
+      <button id="btnInGameChat" type="button" class="hidden relative rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-emerald-200 hover:brightness-110 transition items-center gap-1" title="채팅창 열기/닫기">
         <span>💬</span>
         <span>채팅</span>
         <span id="inGameChatBadge" class="hidden min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-black items-center justify-center leading-none">0</span>
@@ -496,34 +571,64 @@
     </div>
   </div>
 
-  <!-- IN-GAME CHAT PEEK BUBBLE (채팅창이 닫혀 있을 때 새 메시지 미리보기) -->
+  <!-- FLOATING CHAT RESTORE FAB (대기실/게임 중 채팅창을 접어두었을 때 항상 우측 하단에 표시) -->
+  <button id="btnFloatingChatFab" type="button"
+    class="hidden fixed bottom-3 right-3 z-[60] px-3.5 py-2 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-300 hover:to-emerald-500 text-slate-950 font-black text-xs shadow-2xl border border-white/60 items-center gap-1.5 transition active:scale-95">
+    <span>💬</span>
+    <span>채팅 열기</span>
+    <span id="floatingChatFabBadge" class="hidden min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-black items-center justify-center leading-none">0</span>
+  </button>
+
+  <!-- IN-GAME CHAT PEEK BUBBLE (채팅창이 접혀 있을 때 새 메시지 미리보기) -->
   <button id="inGameChatPeek" type="button"
-    class="hidden fixed top-11 right-2 sm:right-3 z-40 max-w-[240px] sm:max-w-xs px-3 py-1.5 rounded-xl bg-slate-950/90 border border-emerald-400/60 text-left text-xs text-white shadow-2xl backdrop-blur-md hover:brightness-110 transition">
+    class="hidden fixed top-11 right-2 sm:right-3 z-[60] max-w-[240px] sm:max-w-xs px-3 py-1.5 rounded-xl bg-slate-950/92 border border-emerald-400/60 text-left text-xs text-white shadow-2xl backdrop-blur-md hover:brightness-110 transition">
     <div id="inGameChatPeekSender" class="text-[10px] font-extrabold text-emerald-300 truncate"></div>
     <div id="inGameChatPeekText" class="text-xs font-medium text-blue-50 truncate"></div>
   </button>
 
-  <!-- FLOATING IN-GAME CHAT PANEL -->
-  <div id="inGameChatPanel" class="hidden fixed bottom-2 right-2 sm:bottom-4 sm:right-4 z-40 w-[calc(100vw-16px)] max-w-xs sm:max-w-sm h-72 sm:h-80 rounded-2xl bg-[#09204d]/95 border border-blue-400/60 shadow-[0_14px_40px_rgba(2,8,28,0.85)] backdrop-blur-md flex-col overflow-hidden">
-    <div class="px-3.5 py-2.5 bg-gradient-to-b from-[#17468f] to-[#0c2a5e] border-b border-blue-400/35 flex items-center justify-between gap-2 shrink-0">
-      <div class="flex items-center gap-1.5 min-w-0">
+  <!-- PERSISTENT FLOATING / SPLIT-SCREEN CHAT PANEL (대기실 & 게임 중 항상 유지, z-[60]) -->
+  <div id="inGameChatPanel" class="hidden chat-mode-floating z-[60] bg-[#09204d]/95 border border-blue-400/65 shadow-[0_14px_40px_rgba(2,8,28,0.88)] backdrop-blur-md flex-col overflow-hidden">
+    <!-- Draggable Header + Floating/Split Toggle -->
+    <div id="inGameChatHeader" class="draggable-chat-header px-3 py-2 bg-gradient-to-b from-[#17468f] to-[#0c2a5e] border-b border-blue-400/35 flex items-center justify-between gap-1.5 shrink-0">
+      <div class="flex items-center gap-1.5 min-w-0 pointer-events-none">
         <span class="text-sm">💬</span>
-        <span class="text-xs sm:text-sm font-black text-white truncate">방 채팅</span>
+        <span class="text-xs sm:text-sm font-black text-white truncate">실시간 채팅</span>
         <span id="inGameChatRoomTag" class="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-400/45 text-amber-300 text-[10px] font-black tracking-wider">----</span>
       </div>
       <div class="flex items-center gap-1 shrink-0">
-        <button type="button" data-quick-emoji="👍" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="최고!">👍</button>
-        <button type="button" data-quick-emoji="😂" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="ㅋㅋㅋ">😂</button>
-        <button type="button" data-quick-emoji="🔥" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="대박!">🔥</button>
-        <button type="button" data-quick-emoji="👏" class="quick-chat-emoji px-1.5 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="박수">👏</button>
-        <button id="btnCloseInGameChat" type="button" class="ml-1 px-2 py-0.5 rounded-lg bg-blue-950/85 hover:bg-blue-800 border border-blue-400/35 text-xs font-black text-blue-100">✕</button>
+        <button id="btnToggleChatMode" type="button" class="px-2 py-0.5 rounded-lg bg-sky-500/25 hover:bg-sky-500/40 border border-sky-300/50 text-[10px] font-black text-sky-100 transition" title="화면 분할 / 플로팅 전환">
+          ◫ 분할
+        </button>
+        <button id="btnCloseInGameChat" type="button" class="px-2 py-0.5 rounded-lg bg-blue-950/85 hover:bg-blue-800 border border-blue-400/35 text-xs font-black text-blue-100" title="채팅 접기">
+          —
+        </button>
+      </div>
+    </div>
+
+    <!-- Room Chat / Global Lobby Chat Tabs + Quick Emojis -->
+    <div class="px-2.5 py-1.5 bg-[#081b40] border-b border-blue-400/25 flex items-center justify-between gap-1.5 shrink-0">
+      <div class="flex items-center gap-1">
+        <button id="tabRoomChat" type="button" class="px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-400 text-slate-950 transition flex items-center gap-1">
+          <span>방 채팅</span>
+          <span id="tabRoomUnread" class="hidden px-1 rounded-full bg-rose-600 text-white text-[9px] font-black">0</span>
+        </button>
+        <button id="tabGlobalChat" type="button" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-950/80 text-blue-200 hover:bg-blue-900 border border-blue-500/30 transition flex items-center gap-1">
+          <span>전체 대화방</span>
+          <span id="tabGlobalUnread" class="hidden px-1 rounded-full bg-rose-600 text-white text-[9px] font-black">0</span>
+        </button>
+      </div>
+      <div class="flex items-center gap-0.5 shrink-0">
+        <button type="button" data-quick-emoji="👍" class="quick-chat-emoji px-1 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="최고!">👍</button>
+        <button type="button" data-quick-emoji="😂" class="quick-chat-emoji px-1 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="ㅋㅋㅋ">😂</button>
+        <button type="button" data-quick-emoji="🔥" class="quick-chat-emoji px-1 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="대박!">🔥</button>
+        <button type="button" data-quick-emoji="👏" class="quick-chat-emoji px-1 py-0.5 rounded bg-blue-950/75 hover:bg-blue-800 text-xs transition" title="박수">👏</button>
       </div>
     </div>
 
     <div id="inGameChatMessages" class="flex-1 min-h-0 overflow-y-auto custom-scroll p-3 space-y-2 bg-slate-950/30"></div>
 
     <form id="inGameChatForm" class="p-2 bg-[#071a3e] border-t border-blue-400/30 flex items-center gap-1.5 shrink-0">
-      <input id="inputInGameChat" type="text" maxlength="200" autocomplete="off" placeholder="채팅 입력..."
+      <input id="inputInGameChat" type="text" maxlength="200" autocomplete="off" placeholder="방 채팅 입력..."
         class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-950/80 border border-blue-500/50 text-white text-xs sm:text-sm font-medium focus:outline-none focus:border-amber-400" />
       <button type="submit" class="px-3 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs sm:text-sm shadow transition active:scale-95 shrink-0">
         전송
@@ -768,7 +873,7 @@
   </div>
 
   <!-- WAITING ROOM MODAL -->
-  <div id="waitingModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+  <div id="waitingModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="w-full max-w-md rounded-2xl bg-[#0b2759] border border-blue-400/50 shadow-2xl overflow-hidden">
       <div class="px-6 py-4 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 text-center">
         <div class="text-xs font-bold text-blue-200">친구에게 아래 4자리 참여 코드를 알려주세요</div>
@@ -825,12 +930,12 @@
           <p class="mt-1">더미가 모두 소진되면 다음 사람부터 한 바퀴(각 최대 40초) 돌고, <b>마지막 카드를 뽑은 사람</b>이 차례를 마치면 남은 패 합계로 점수와 등수를 계산합니다.</p>
         </div>
         <div>
-          <h3 class="font-extrabold text-amber-300 mb-1">2. 스마트 조작</h3>
+          <h3 class="font-extrabold text-amber-300 mb-1">2. 스마트 조작 &amp; 채팅</h3>
           <ul class="list-disc pl-5 space-y-1">
             <li><b>우측 789 / 777 버튼</b>: 상대 턴에도 언제든 정렬 가능하며, 받침대 안에서 직접 드래그해 수동 정렬도 가능합니다.</li>
             <li><b>조건 충족 연속 선택</b>: 타일을 누르고 있으면 <b>0.25초마다</b> 같은 색 연속 숫자나 다른 색 같은 숫자 조건을 만족하는 뒤쪽 패만 선택됩니다.</li>
             <li><b>끼워넣기 · 좌우 자동 밀기 · 자동 분리</b>: 같은 숫자 3개 사이에 4번째 숫자를 끼워 넣거나, 판 위 패의 왼쪽·오른쪽에 붙일 때 공간이 부족하면 주변 패가 자동으로 자리를 만들어 줍니다. 긴 런 중간에 패를 끼워 넣으면 <b>✂ 자동 분리</b>됩니다.</li>
-            <li><b>상관없는 패 차단</b>: 조합할 수 없는 패 옆에는 붙일 수 없습니다.</li>
+            <li><b>상시 채팅 (플로팅 / 화면 분할)</b>: 대기실과 게임 중에도 채팅창 상단을 드래그해 원하는 곳에 두거나 <b>◫ 분할</b> 버튼으로 우측에 고정해 방 채팅과 전체 대화방을 오가며 대화할 수 있습니다.</li>
           </ul>
         </div>
         <div class="pt-2 border-t border-blue-400/25 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -1059,6 +1164,23 @@
       });
     }
 
+    function playErrorBuzz() {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(190, now);
+      osc.frequency.linearRampToValueAtTime(140, now + 0.16);
+      g.gain.setValueAtTime(0.1, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.19);
+    }
+
     // ==================== VICTORY CONFETTI & FIREWORKS CANVAS ====================
     const victoryFxCanvas = document.getElementById('victoryFxCanvas');
     const victoryBannerWrap = document.getElementById('victoryBannerWrap');
@@ -1083,11 +1205,8 @@
       const ctx = victoryFxCanvas.getContext('2d');
       if (!ctx) return;
 
-      const resizeCanvas = () => {
-        victoryFxCanvas.width = window.innerWidth;
-        victoryFxCanvas.height = window.innerHeight;
-      };
-      resizeCanvas();
+      victoryFxCanvas.width = window.innerWidth;
+      victoryFxCanvas.height = window.innerHeight;
 
       const palette = ['#fde047', '#fb923c', '#38bdf8', '#4ade80', '#f472b6', '#ffffff', '#facc15'];
 
@@ -1127,7 +1246,6 @@
         }
         ctx.clearRect(0, 0, victoryFxCanvas.width, victoryFxCanvas.height);
 
-        // 내 승리 시 상단에서 황금 꽃가루가 은은하게 계속 떨어짐
         if (isMyWin && victoryParticles.length < 140 && Math.random() < 0.35) {
           victoryParticles.push({
             x: Math.random() * victoryFxCanvas.width,
@@ -1183,35 +1301,26 @@
       victoryFxRaf = requestAnimationFrame(animate);
     }
 
-    function playErrorBuzz() {
-      const ctx = ensureAudio();
-      if (!ctx) return;
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(190, now);
-      osc.frequency.linearRampToValueAtTime(140, now + 0.16);
-      g.gain.setValueAtTime(0.1, now);
-      g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-      osc.connect(g);
-      g.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.19);
-    }
-
     // ==================== CLIENT STATE ====================
     let selectedMaxPlayers = 4;
     let hasEnteredLobby = false;
     let myPlayerName = localStorage.getItem(STORAGE_NAME_KEY) || '';
     let lobbyUsersData = [];
     let lobbyRoomsData = [];
+    let lobbyChatHistory = [];
+    let roomChatHistory = [];
     let pendingServerState = null;
     let lastPreviewEmitAt = 0;
     let lastTimerTickAt = Date.now();
     let resyncInFlight = false;
+
+    // Persistent Floating / Split Chat State
     let inGameChatOpen = false;
-    let inGameUnreadCount = 0;
+    let inGameChatUserMinimized = false;
+    let chatDisplayMode = 'floating'; // 'floating' | 'split'
+    let activeChatTab = 'room'; // 'room' | 'global'
+    let roomUnreadCount = 0;
+    let globalUnreadCount = 0;
     let inGameChatLoadedCode = null;
     let inGamePeekTimer = null;
 
@@ -1326,10 +1435,20 @@
     const guestWaitMsg = document.getElementById('guestWaitMsg');
     const helpModal = document.getElementById('helpModal');
     const gameOverModal = document.getElementById('gameOverModal');
+
+    // Persistent Chat DOM
     const btnInGameChat = document.getElementById('btnInGameChat');
     const inGameChatBadge = document.getElementById('inGameChatBadge');
+    const btnFloatingChatFab = document.getElementById('btnFloatingChatFab');
+    const floatingChatFabBadge = document.getElementById('floatingChatFabBadge');
     const inGameChatPanel = document.getElementById('inGameChatPanel');
+    const inGameChatHeader = document.getElementById('inGameChatHeader');
+    const btnToggleChatMode = document.getElementById('btnToggleChatMode');
     const inGameChatRoomTag = document.getElementById('inGameChatRoomTag');
+    const tabRoomChat = document.getElementById('tabRoomChat');
+    const tabGlobalChat = document.getElementById('tabGlobalChat');
+    const tabRoomUnread = document.getElementById('tabRoomUnread');
+    const tabGlobalUnread = document.getElementById('tabGlobalUnread');
     const inGameChatMessages = document.getElementById('inGameChatMessages');
     const inGameChatForm = document.getElementById('inGameChatForm');
     const inputInGameChat = document.getElementById('inputInGameChat');
@@ -1405,6 +1524,7 @@
       }
     }
 
+    // ==================== LOBBY UI HELPERS ====================
     function renderLobbyUsers(users) {
       lobbyUsersData = Array.isArray(users) ? users : [];
       lobbyOnlineBadge.textContent = `접속 ${lobbyUsersData.length}명`;
@@ -1471,16 +1591,14 @@
       });
     }
 
-    function appendLobbyChatMessage(msg, shouldScroll = true) {
-      if (!msg) return;
+    function createChatBubbleNode(msg, allowRoomJoinBtn = false) {
       const wrap = document.createElement('div');
-
       if (msg.type === 'system') {
         wrap.className = 'flex flex-col items-center my-1';
         const inner = document.createElement('div');
-        inner.className = 'px-3 py-1 rounded-full bg-blue-950/80 border border-blue-400/30 text-[11px] font-bold text-blue-200/90 flex items-center gap-2 flex-wrap justify-center';
+        inner.className = 'px-2.5 py-1 rounded-full bg-blue-950/80 border border-blue-400/30 text-[11px] font-bold text-blue-200/90 flex items-center gap-1.5 flex-wrap justify-center';
         inner.innerHTML = `<span>${escapeHtml(msg.text)}</span>`;
-        if (msg.roomCode) {
+        if (allowRoomJoinBtn && msg.roomCode) {
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'px-2 py-0.5 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[10px] shadow transition';
@@ -1496,34 +1614,61 @@
           <div class="text-[10px] font-bold text-blue-200/75 mb-0.5 px-1">
             ${isMe ? '나' : escapeHtml(msg.senderName)} · ${formatChatTime(msg.timestamp)}
           </div>
-          <div class="max-w-[82%] px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium break-words shadow ${
+          <div class="max-w-[86%] px-3 py-1.5 rounded-2xl text-xs sm:text-sm font-medium break-words shadow ${
             isMe
               ? 'bg-amber-400 text-slate-950 rounded-tr-sm font-bold'
-              : 'bg-blue-900/90 border border-blue-400/30 text-white rounded-tl-sm'
+              : 'bg-blue-900/95 border border-blue-400/35 text-white rounded-tl-sm'
           }">${escapeHtml(msg.text)}</div>
         `;
       }
+      return wrap;
+    }
 
-      lobbyChatMessages.appendChild(wrap);
-      if (shouldScroll) {
-        lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
+    function appendLobbyChatMessage(msg, shouldScroll = true) {
+      if (!msg) return;
+      lobbyChatHistory.push(msg);
+      if (lobbyChatHistory.length > 80) lobbyChatHistory.shift();
+
+      lobbyChatMessages.appendChild(createChatBubbleNode(msg, true));
+      if (shouldScroll) lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
+
+      // 대기실/게임 중 플로팅·분할 채팅창에서 전체 대화방 탭이 열려 있다면 실시간 반영
+      if (state.phase !== 'lobby') {
+        if (inGameChatOpen && activeChatTab === 'global') {
+          if (inGameChatMessages.firstElementChild && inGameChatMessages.firstElementChild.dataset?.emptyPlaceholder === '1') {
+            inGameChatMessages.innerHTML = '';
+          }
+          inGameChatMessages.appendChild(createChatBubbleNode(msg, false));
+          inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+        } else if (msg.type !== 'system' && msg.sessionId !== sessionId) {
+          globalUnreadCount++;
+          updateInGameChatBadges();
+        }
       }
     }
 
     function renderAllLobbyMessages(messages) {
+      lobbyChatHistory = Array.isArray(messages) ? [...messages] : [];
       lobbyChatMessages.innerHTML = '';
-      if (!Array.isArray(messages) || messages.length === 0) {
-        appendLobbyChatMessage({
+      if (lobbyChatHistory.length === 0) {
+        lobbyChatMessages.appendChild(createChatBubbleNode({
           type: 'system',
           text: '대화방에 오신 것을 환영합니다! 자유롭게 채팅하고 우측 상단 [🎮 게임 메뉴]에서 방을 만들거나 참여해 보세요.',
-        }, false);
+        }, false));
       } else {
-        messages.forEach((m) => appendLobbyChatMessage(m, false));
+        lobbyChatHistory.forEach((m) => lobbyChatMessages.appendChild(createChatBubbleNode(m, true)));
       }
       lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
     }
 
     function showChatLobbyView() {
+      closePersistentChat(false);
+      btnInGameChat.classList.add('hidden');
+      btnInGameChat.classList.remove('flex');
+      btnFloatingChatFab.classList.add('hidden');
+      btnFloatingChatFab.classList.remove('flex');
+      hideInGameChatPeek();
+
       waitingModal.classList.add('hidden');
       gameOverModal.classList.add('hidden');
       gameMenuModal.classList.add('hidden');
@@ -1544,15 +1689,37 @@
       }
     }
 
-    // ==================== IN-GAME CHAT HELPERS ====================
-    function updateInGameChatBadge() {
-      if (inGameUnreadCount > 0 && !inGameChatOpen) {
-        inGameChatBadge.textContent = inGameUnreadCount > 99 ? '99+' : String(inGameUnreadCount);
+    // ==================== PERSISTENT FLOATING / SPLIT CHAT ====================
+    function updateInGameChatBadges() {
+      const totalUnread = roomUnreadCount + globalUnreadCount;
+      const showTopBadge = totalUnread > 0 && !inGameChatOpen;
+      if (showTopBadge) {
+        const label = totalUnread > 99 ? '99+' : String(totalUnread);
+        inGameChatBadge.textContent = label;
         inGameChatBadge.classList.remove('hidden');
         inGameChatBadge.classList.add('flex');
+        floatingChatFabBadge.textContent = label;
+        floatingChatFabBadge.classList.remove('hidden');
+        floatingChatFabBadge.classList.add('flex');
       } else {
         inGameChatBadge.classList.add('hidden');
         inGameChatBadge.classList.remove('flex');
+        floatingChatFabBadge.classList.add('hidden');
+        floatingChatFabBadge.classList.remove('flex');
+      }
+
+      if (roomUnreadCount > 0 && !(inGameChatOpen && activeChatTab === 'room')) {
+        tabRoomUnread.textContent = String(roomUnreadCount);
+        tabRoomUnread.classList.remove('hidden');
+      } else {
+        tabRoomUnread.classList.add('hidden');
+      }
+
+      if (globalUnreadCount > 0 && !(inGameChatOpen && activeChatTab === 'global')) {
+        tabGlobalUnread.textContent = String(globalUnreadCount);
+        tabGlobalUnread.classList.remove('hidden');
+      } else {
+        tabGlobalUnread.classList.add('hidden');
       }
     }
 
@@ -1565,80 +1732,184 @@
     }
 
     function showInGameChatPeek(msg) {
-      if (!msg || inGameChatOpen || (state.phase !== 'playing' && state.phase !== 'gameover')) return;
+      if (!msg || inGameChatOpen || state.phase === 'lobby') return;
       inGameChatPeekSender.textContent = `💬 ${msg.senderName}`;
       inGameChatPeekText.textContent = msg.text;
       inGameChatPeek.classList.remove('hidden');
       if (inGamePeekTimer) clearTimeout(inGamePeekTimer);
-      inGamePeekTimer = setTimeout(() => {
-        inGameChatPeek.classList.add('hidden');
-      }, 3600);
+      inGamePeekTimer = setTimeout(() => inGameChatPeek.classList.add('hidden'), 3600);
     }
 
-    function openInGameChat() {
+    function renderActiveChatTabMessages() {
+      inGameChatMessages.innerHTML = '';
+      const list = activeChatTab === 'room' ? roomChatHistory : lobbyChatHistory;
+      if (list.length === 0) {
+        const empty = document.createElement('div');
+        empty.dataset.emptyPlaceholder = '1';
+        empty.className = 'text-center text-[11px] text-blue-200/65 py-6';
+        empty.textContent = activeChatTab === 'room'
+          ? '대기실과 게임 중에도 방 친구들과 실시간으로 대화해 보세요!'
+          : '전체 대화방 메시지가 여기에 표시됩니다.';
+        inGameChatMessages.appendChild(empty);
+      } else {
+        list.forEach((m) => inGameChatMessages.appendChild(createChatBubbleNode(m, false)));
+      }
+      inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+    }
+
+    function setActiveChatTab(tab) {
+      activeChatTab = tab === 'global' ? 'global' : 'room';
+      if (activeChatTab === 'room') {
+        roomUnreadCount = 0;
+        tabRoomChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-400 text-slate-950 transition flex items-center gap-1';
+        tabGlobalChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-950/80 text-blue-200 hover:bg-blue-900 border border-blue-500/30 transition flex items-center gap-1';
+        inputInGameChat.placeholder = '방 채팅 입력...';
+      } else {
+        globalUnreadCount = 0;
+        tabGlobalChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-black bg-amber-400 text-slate-950 transition flex items-center gap-1';
+        tabRoomChat.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-950/80 text-blue-200 hover:bg-blue-900 border border-blue-500/30 transition flex items-center gap-1';
+        inputInGameChat.placeholder = '전체 대화방 입력...';
+      }
+      updateInGameChatBadges();
+      renderActiveChatTabMessages();
+    }
+
+    function applyChatDisplayMode(mode) {
+      chatDisplayMode = mode === 'split' ? 'split' : 'floating';
+      if (chatDisplayMode === 'split') {
+        inGameChatPanel.classList.remove('chat-mode-floating');
+        inGameChatPanel.classList.add('chat-mode-split');
+        inGameChatPanel.style.left = '';
+        inGameChatPanel.style.top = '';
+        inGameChatPanel.style.right = '';
+        inGameChatPanel.style.bottom = '';
+        inGameChatHeader.classList.remove('draggable-chat-header');
+        btnToggleChatMode.textContent = '❐ 플로팅';
+        if (inGameChatOpen) document.body.classList.add('chat-split-open');
+      } else {
+        inGameChatPanel.classList.remove('chat-mode-split');
+        inGameChatPanel.classList.add('chat-mode-floating');
+        inGameChatHeader.classList.add('draggable-chat-header');
+        btnToggleChatMode.textContent = '◫ 분할';
+        document.body.classList.remove('chat-split-open');
+      }
+      if (state.phase === 'playing' || state.phase === 'gameover') {
+        requestAnimationFrame(() => {
+          computeBoardDimensions(false);
+          renderBoard();
+          renderRack();
+        });
+      }
+    }
+
+    function openPersistentChat(focusInput = false) {
       inGameChatOpen = true;
-      inGameUnreadCount = 0;
-      updateInGameChatBadge();
+      inGameChatUserMinimized = false;
+      if (activeChatTab === 'room') roomUnreadCount = 0;
+      else globalUnreadCount = 0;
+      updateInGameChatBadges();
       hideInGameChatPeek();
+
       inGameChatRoomTag.textContent = state.code || '----';
       inGameChatPanel.classList.remove('hidden');
       inGameChatPanel.classList.add('flex');
-      inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
-      setTimeout(() => inputInGameChat.focus(), 40);
+      btnFloatingChatFab.classList.add('hidden');
+      btnFloatingChatFab.classList.remove('flex');
+
+      if (chatDisplayMode === 'split') {
+        document.body.classList.add('chat-split-open');
+      }
+      renderActiveChatTabMessages();
+      if (state.phase === 'playing' || state.phase === 'gameover') {
+        requestAnimationFrame(() => {
+          computeBoardDimensions(false);
+          renderBoard();
+          renderRack();
+        });
+      }
+      if (focusInput) setTimeout(() => inputInGameChat.focus(), 40);
     }
 
-    function closeInGameChat() {
+    function closePersistentChat(byUser = true) {
       inGameChatOpen = false;
+      if (byUser) inGameChatUserMinimized = true;
       inGameChatPanel.classList.add('hidden');
       inGameChatPanel.classList.remove('flex');
-    }
-
-    function toggleInGameChat() {
-      if (inGameChatOpen) closeInGameChat();
-      else openInGameChat();
-    }
-
-    function appendInGameChatMessage(msg, shouldScroll = true) {
-      if (!msg) return;
-      const isMe = msg.sessionId === sessionId;
-      const wrap = document.createElement('div');
-      wrap.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
-      wrap.innerHTML = `
-        <div class="text-[10px] font-bold text-blue-200/75 mb-0.5 px-1">
-          ${isMe ? '나' : escapeHtml(msg.senderName)} · ${formatChatTime(msg.timestamp)}
-        </div>
-        <div class="max-w-[86%] px-2.5 py-1.5 rounded-2xl text-xs font-medium break-words shadow ${
-          isMe
-            ? 'bg-amber-400 text-slate-950 rounded-tr-sm font-bold'
-            : 'bg-blue-900/95 border border-blue-400/35 text-white rounded-tl-sm'
-        }">${escapeHtml(msg.text)}</div>
-      `;
-      inGameChatMessages.appendChild(wrap);
-      if (shouldScroll) {
-        inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+      document.body.classList.remove('chat-split-open');
+      if (state.phase !== 'lobby') {
+        btnFloatingChatFab.classList.remove('hidden');
+        btnFloatingChatFab.classList.add('flex');
+      }
+      updateInGameChatBadges();
+      if (state.phase === 'playing' || state.phase === 'gameover') {
+        requestAnimationFrame(() => {
+          computeBoardDimensions(false);
+          renderBoard();
+          renderRack();
+        });
       }
     }
 
-    function renderAllInGameMessages(messages) {
-      inGameChatMessages.innerHTML = '';
-      if (!Array.isArray(messages) || messages.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'text-center text-[11px] text-blue-200/65 py-6';
-        empty.textContent = '게임 중에도 친구들과 실시간으로 대화해 보세요!';
-        inGameChatMessages.appendChild(empty);
-      } else {
-        messages.forEach((m) => appendInGameChatMessage(m, false));
-      }
-      inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+    function togglePersistentChat() {
+      if (inGameChatOpen) closePersistentChat(true);
+      else openPersistentChat(true);
     }
 
-    function sendInGameChat(text) {
-      if (!socket || !state.code) return;
+    function sendActivePersistentChat(text) {
+      if (!socket) return;
       const clean = String(text || '').trim();
       if (!clean) return;
-      socket.emit('room:chat', { text: clean }, (res) => {
-        if (res && res.error) showToast(res.error, 'error');
-      });
+      if (activeChatTab === 'room') {
+        if (!state.code) return;
+        socket.emit('room:chat', { text: clean }, (res) => {
+          if (res && res.error) showToast(res.error, 'error');
+        });
+      } else {
+        socket.emit('lobby:chat', { text: clean }, (res) => {
+          if (res && res.error) showToast(res.error, 'error');
+        });
+      }
+    }
+
+    // Floating Chat Panel Dragging
+    const chatDrag = { active: false, pointerId: null, offsetX: 0, offsetY: 0 };
+    inGameChatHeader.addEventListener('pointerdown', (e) => {
+      if (chatDisplayMode !== 'floating') return;
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      const rect = inGameChatPanel.getBoundingClientRect();
+      chatDrag.active = true;
+      chatDrag.pointerId = e.pointerId;
+      chatDrag.offsetX = e.clientX - rect.left;
+      chatDrag.offsetY = e.clientY - rect.top;
+      inGameChatPanel.style.left = `${rect.left}px`;
+      inGameChatPanel.style.top = `${rect.top}px`;
+      inGameChatPanel.style.right = 'auto';
+      inGameChatPanel.style.bottom = 'auto';
+      window.addEventListener('pointermove', onChatDragMove, { passive: false });
+      window.addEventListener('pointerup', onChatDragUp);
+      window.addEventListener('pointercancel', onChatDragUp);
+    });
+
+    function onChatDragMove(e) {
+      if (!chatDrag.active || e.pointerId !== chatDrag.pointerId) return;
+      e.preventDefault();
+      const rect = inGameChatPanel.getBoundingClientRect();
+      const maxX = Math.max(8, window.innerWidth - rect.width - 8);
+      const maxY = Math.max(8, window.innerHeight - rect.height - 8);
+      const nextX = Math.max(8, Math.min(maxX, e.clientX - chatDrag.offsetX));
+      const nextY = Math.max(8, Math.min(maxY, e.clientY - chatDrag.offsetY));
+      inGameChatPanel.style.left = `${nextX}px`;
+      inGameChatPanel.style.top = `${nextY}px`;
+    }
+
+    function onChatDragUp(e) {
+      if (!chatDrag.active || e.pointerId !== chatDrag.pointerId) return;
+      chatDrag.active = false;
+      chatDrag.pointerId = null;
+      window.removeEventListener('pointermove', onChatDragMove);
+      window.removeEventListener('pointerup', onChatDragUp);
+      window.removeEventListener('pointercancel', onChatDragUp);
     }
 
     // ==================== CORE TURN, RACK & SET HELPERS ====================
@@ -2126,7 +2397,6 @@
       const len = tilesToPlace.length;
       if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
 
-      // 1차: 겹치거나 바로 닿은 패들만 가장 가까운 빈 자리로 이동
       const pushed = planPushBlockersAround(row, startCol, tilesToPlace, removeIds);
       if (pushed) {
         return {
@@ -2138,7 +2408,6 @@
         };
       }
 
-      // 2차: 보드가 빽빽할 경우 메이드 패를 원하는 위치에 고정하고 나머지 패들을 보드 빈 공간에 자동 재배치
       const existingGroups = [];
       for (let r = 0; r < GRID_ROWS; r++) {
         let c = 0;
@@ -2207,23 +2476,21 @@
 
       const simBoard = state.board.map((rowArr) => rowArr.map((t) => (t ? { ...t } : null)));
 
-      // 이동 중인 패(removeIds)만 시뮬레이션 보드에서 제거 (keepIds는 그대로 유지!)
       const removedSimSpots = [];
       for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c < GRID_COLS; c++) {
-          if (simBoard[r][c] && removeIds.has(simBoard[r][c].id)) {
-            simBoard[r][c] = null;
-            removedSimSpots.push({ row: r, col: c });
+        for (let colIdx = 0; colIdx < GRID_COLS; colIdx++) {
+          if (simBoard[r][colIdx] && removeIds.has(simBoard[r][colIdx].id)) {
+            simBoard[r][colIdx] = null;
+            removedSimSpots.push({ row: r, col: colIdx });
           }
         }
       }
       if (removedSimSpots.length === 1) closeGroupGapsOn(simBoard, removedSimSpots);
 
       for (const b of blockers) {
-        for (let c = b.startCol; c <= b.endCol; c++) simBoard[b.row][c] = null;
+        for (let colIdx = b.startCol; colIdx <= b.endCol; colIdx++) simBoard[b.row][colIdx] = null;
       }
 
-      // 놓으려는 자리가 keepIds 등 다른 패와 겹치면 불가
       for (let i = 0; i < len; i++) {
         if (simBoard[row][startCol + i]) return null;
       }
@@ -2235,18 +2502,18 @@
         let dest = null;
         const preferRight = b.startCol >= startCol;
         if (preferRight) {
-          for (let c = startCol + len + 1; c <= GRID_COLS - bLen; c++) {
-            if (!isAreaFreeOn(simBoard, row, c, bLen)) continue;
-            const lClear = c === 0 || !simBoard[row][c - 1];
-            const rClear = c + bLen >= GRID_COLS || !simBoard[row][c + bLen];
-            if (lClear && rClear) { dest = { row, col: c }; break; }
+          for (let colIdx = startCol + len + 1; colIdx <= GRID_COLS - bLen; colIdx++) {
+            if (!isAreaFreeOn(simBoard, row, colIdx, bLen)) continue;
+            const lClear = colIdx === 0 || !simBoard[row][colIdx - 1];
+            const rClear = colIdx + bLen >= GRID_COLS || !simBoard[row][colIdx + bLen];
+            if (lClear && rClear) { dest = { row, col: colIdx }; break; }
           }
         } else {
-          for (let c = startCol - bLen - 1; c >= 0; c--) {
-            if (!isAreaFreeOn(simBoard, row, c, bLen)) continue;
-            const lClear = c === 0 || !simBoard[row][c - 1];
-            const rClear = c + bLen >= GRID_COLS || !simBoard[row][c + bLen];
-            if (lClear && rClear) { dest = { row, col: c }; break; }
+          for (let colIdx = startCol - bLen - 1; colIdx >= 0; colIdx--) {
+            if (!isAreaFreeOn(simBoard, row, colIdx, bLen)) continue;
+            const lClear = colIdx === 0 || !simBoard[row][colIdx - 1];
+            const rClear = colIdx + bLen >= GRID_COLS || !simBoard[row][colIdx + bLen];
+            if (lClear && rClear) { dest = { row, col: colIdx }; break; }
           }
         }
         if (!dest) dest = findNearestEmptySpotOn(simBoard, row, b.startCol, bLen);
@@ -2392,7 +2659,6 @@
             }
             const gEnd = c - 1;
 
-            // 1-a. 오른쪽 끝 붙이기
             const rightCombined = [...gTiles, ...draggingTiles];
             if (canCombineTiles(rightCombined)) {
               const rightCol = gEnd + 1;
@@ -2423,7 +2689,6 @@
               }
             }
 
-            // 1-b. 왼쪽 끝 붙이기 (좌측 패 자동 치우기 + 맨 왼쪽 끝 우측 밀기)
             const leftCombined = [...draggingTiles, ...gTiles];
             if (canCombineTiles(leftCombined)) {
               const leftCol = gStart - len;
@@ -2494,7 +2759,6 @@
         const baseCol0 = Math.max(visMinCol, Math.min(visMaxCol, Math.round(fCol)));
         const baseRow0 = Math.max(visMinRow, Math.min(visMaxRow, Math.round(fRow)));
 
-        // 메이드된 패는 기존 패 위 어느 위치에나 배치 가능 (그 자리에 있던 패는 판 위 빈 자리로 자동 재배치)
         if (isDraggingMade) {
           const relocated = planPlaceMadeWithAutoRelocate(baseRow0, baseCol0, draggingTiles, ignoreIds);
           if (relocated) {
@@ -2528,11 +2792,10 @@
         return null;
       }
 
-      // 2. 자유 배치 (화면 전체 + 랙 바로 위 공간 포함, 공간 부족 시 자동 밀기/정리)
+      // 2. 자유 배치 (화면 전체 + 랙 바로 위 공간 포함)
       let baseCol = Math.max(visMinCol, Math.min(visMaxCol, Math.round(fCol)));
       const baseRow = Math.max(visMinRow, Math.min(visMaxRow, Math.round(fRow)));
 
-      // 메이드된 패는 해당 자리에 기존 패가 있어도 원하는 위치에 바로 놓고 기존 패를 자동 재배치
       if (isDraggingMade && !isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
         const relocated = planPlaceMadeWithAutoRelocate(baseRow, baseCol, draggingTiles, ignoreIds);
         if (relocated) {
@@ -2549,7 +2812,6 @@
         }
       }
 
-      // 반올림 오차로 옆 타일 칸에 겹칠 때 커서가 실제 가리키는 인접 빈 칸 우선 사용
       if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
         const altCols = [
           Math.max(0, Math.min(GRID_COLS - len, Math.floor(fCol))),
@@ -2600,7 +2862,6 @@
 
       const adj = checkAdjacencyCompatible(baseRow, baseCol);
       if (adj.touchesNeighbor && !adj.compatible) {
-        // 메이드된 패를 상관없는 패 옆에 놓을 경우, 옆 패를 빈 자리로 자동 이동시키고 원하는 위치에 배치
         if (isDraggingMade) {
           const relocated = planPlaceMadeWithAutoRelocate(baseRow, baseCol, draggingTiles, ignoreIds);
           if (relocated) {
@@ -2699,7 +2960,6 @@
       const availW = Math.max(200, rect.width - (isNarrow ? 6 : 16));
       const availH = Math.max(140, rect.height - (isNarrow ? 6 : 12));
       const aspect = 1.38;
-      // 위아래 패 사이에 파란 바닥이 넉넉히 보이도록 행 간격 비율 확대 (타일 높이의 24%, 최소 10px)
       const gapRatio = 0.24;
 
       if (!lockScale) {
@@ -2719,7 +2979,6 @@
           }
         }
 
-        // 화면 크기에 맞춰 전체 가로·세로 영역을 유기적으로 꽉 채울 수 있는 열/행 수 계산
         const targetTileW = isNarrow ? 30 : 48;
         const targetTileH = Math.round(targetTileW * aspect);
         const targetGap = Math.max(10, Math.round(targetTileH * gapRatio));
@@ -2824,7 +3083,7 @@
             ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 px-1 rounded bg-rose-600 text-[9px] font-black text-white shadow">오프라인</span>' : ''}
           </div>
           <div class="px-2 py-0.5 rounded-lg bg-slate-950/75 border border-blue-400/35 text-xs sm:text-sm font-extrabold text-blue-50 flex items-center gap-1.5 max-w-full shadow">
-            <span class="truncate max-w-[48px] sm:max-w-[66px]">${p.name}</span>
+            <span class="truncate max-w-[48px] sm:max-w-[66px]">${escapeHtml(p.name)}</span>
             <span class="text-amber-300 font-black text-sm sm:text-base">${count}</span>
           </div>
         `;
@@ -2861,9 +3120,9 @@
 
       if (curr) {
         if (isMyTurn()) {
-          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>내 차례 — ${evalRes ? evalRes.reason : ''}</span>`;
+          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>내 차례 — ${escapeHtml(evalRes ? evalRes.reason : '')}</span>`;
         } else {
-          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping"></span><span>${curr.name}님의 차례...</span>`;
+          turnStatusText.innerHTML = `<span class="inline-block w-2 h-2 rounded-full bg-sky-400 animate-ping"></span><span>${escapeHtml(curr.name)}님의 차례...</span>`;
         }
       }
 
@@ -2963,7 +3222,8 @@
       const rowSize = Math.floor(state.myRack.length / 2);
 
       const isNarrow = window.innerWidth < 640;
-      const sideSpace = isNarrow ? 164 : 230;
+      const splitOffset = (inGameChatOpen && chatDisplayMode === 'split' && window.innerWidth >= 768) ? 320 : 0;
+      const sideSpace = (isNarrow ? 164 : 230) + splitOffset;
       const availRackW = Math.max(180, window.innerWidth - sideSpace);
       const maxTileH = Math.max(36, Math.min(72, Math.floor(window.innerHeight * 0.115)));
       const maxTileWByH = Math.floor(maxTileH / 1.38);
@@ -3233,7 +3493,6 @@
       interact.isDragging = false;
       interact.snapTarget = null;
 
-      // 터치에서만 포인터 캡처 사용 (마우스는 window 전역 리스너 + mouseup 백업으로 안정적 유지)
       if (e.pointerType !== 'mouse' && interact.captureEl && interact.captureEl.setPointerCapture) {
         try { interact.captureEl.setPointerCapture(e.pointerId); } catch (_err) {}
       }
@@ -3408,7 +3667,6 @@
 
     function onGlobalPointerCancel(e) {
       if (!interact.active || !isMatchingPointer(e)) return;
-      // 마우스 드래그 중에는 브라우저 임의 pointercancel을 절대 드롭 처리하지 않음 (실제 pointerup/mouseup에서만 종료)
       if (interact.pointerType === 'mouse') return;
       onGlobalPointerUp(e);
     }
@@ -3648,7 +3906,6 @@
       const ids = new Set(tiles.map((t) => t.id));
 
       if (snapTarget && Array.isArray(snapTarget.pushMoves) && snapTarget.pushMoves.length > 0 && snapTarget.nextBoard) {
-        // 보드 타일 유실/덮어쓰기 방지 검증 후 적용
         const beforeBoardIds = new Set();
         for (let r = 0; r < GRID_ROWS; r++) {
           for (let c = 0; c < GRID_COLS; c++) {
@@ -3717,7 +3974,6 @@
       }
 
       removeTilesFromCurrentLocations(ids);
-
       for (let i = 0; i < tiles.length; i++) state.board[row][col + i] = tiles[i];
 
       playClack(isMagnet);
@@ -3821,7 +4077,7 @@
         row.innerHTML = `
           <div class="flex items-center gap-2.5">
             <div class="w-8 h-8 rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-base">${p.isAI ? av.emoji : '🧑'}</div>
-            <div class="font-extrabold text-sm text-white">${p.name} ${p.sessionId === sessionId ? '<span class="text-amber-300 text-xs">(나)</span>' : ''}</div>
+            <div class="font-extrabold text-sm text-white">${escapeHtml(p.name)} ${p.sessionId === sessionId ? '<span class="text-amber-300 text-xs">(나)</span>' : ''}</div>
           </div>
           <span class="text-[11px] font-bold ${p.isHost ? 'text-amber-300' : 'text-blue-200/75'}">${p.isHost ? '👑 방장' : '참가자'}</span>
         `;
@@ -3869,7 +4125,7 @@
             <span class="px-1.5 py-0.5 rounded-md text-[11px] font-black ${r.isWinner ? 'bg-amber-400 text-slate-950' : 'bg-blue-900 text-blue-200'}">${rankNum}등</span>
             <span>${r.isAI ? '🤖' : '👤'}</span>
             <div>
-              <div class="font-extrabold text-sm text-white">${r.name} ${r.isWinner ? '👑' : ''}</div>
+              <div class="font-extrabold text-sm text-white">${escapeHtml(r.name)} ${r.isWinner ? '👑' : ''}</div>
               <div class="text-[11px] text-blue-200/75">남은 패 ${r.leftCount}장${rawSumText}${adjustNote}</div>
             </div>
           </div>
@@ -3905,6 +4161,28 @@
       }
     }
 
+    function ensurePersistentChatVisibleForRoom(payload) {
+      btnInGameChat.classList.remove('hidden');
+      btnInGameChat.classList.add('flex');
+      inGameChatRoomTag.textContent = state.code || '----';
+
+      if (inGameChatLoadedCode !== state.code) {
+        inGameChatLoadedCode = state.code;
+        roomUnreadCount = 0;
+        inGameChatUserMinimized = false;
+        roomChatHistory = Array.isArray(payload.chatMessages) ? [...payload.chatMessages] : [];
+        setActiveChatTab('room');
+      }
+
+      if (!inGameChatUserMinimized) {
+        openPersistentChat(false);
+      } else {
+        btnFloatingChatFab.classList.remove('hidden');
+        btnFloatingChatFab.classList.add('flex');
+        updateInGameChatBadges();
+      }
+    }
+
     function applyServerRoomState(payload) {
       if (interact.active) {
         pendingServerState = payload;
@@ -3930,7 +4208,6 @@
       state.evalState = payload.evalState || null;
       state.gameOverData = payload.gameOverData || null;
 
-      // 내 받침대 타일 구성이 동일하면 사용자의 로컬 정렬 순서를 유지해 패가 바뀌는 현상 방지
       const incomingRack = Array.isArray(payload.myRack) ? payload.myRack : Array(20).fill(null);
       const localIds = state.myRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
       const serverIds = incomingRack.filter(Boolean).map((t) => t.id).sort((a, b) => a - b);
@@ -3952,41 +4229,29 @@
 
       if (state.phase === 'waiting') {
         stopVictoryEffects();
-        btnInGameChat.classList.add('hidden');
-        btnInGameChat.classList.remove('flex');
-        closeInGameChat();
-        hideInGameChatPeek();
         nicknameModal.classList.add('hidden');
         chatLobbyModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
         waitingModal.classList.remove('hidden');
         renderWaitingRoom();
+        ensurePersistentChatVisibleForRoom(payload);
       } else if (state.phase === 'playing') {
         stopVictoryEffects();
         lastTimerTickAt = Date.now();
-        btnInGameChat.classList.remove('hidden');
-        btnInGameChat.classList.add('flex');
-        inGameChatRoomTag.textContent = state.code || '----';
-        if (inGameChatLoadedCode !== state.code) {
-          inGameChatLoadedCode = state.code;
-          inGameUnreadCount = 0;
-          updateInGameChatBadge();
-          renderAllInGameMessages(payload.chatMessages || []);
-        }
         nicknameModal.classList.add('hidden');
         chatLobbyModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
         waitingModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
+        ensurePersistentChatVisibleForRoom(payload);
         renderAll();
       } else if (state.phase === 'gameover') {
-        btnInGameChat.classList.remove('hidden');
-        btnInGameChat.classList.add('flex');
         nicknameModal.classList.add('hidden');
         chatLobbyModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
         waitingModal.classList.add('hidden');
+        ensurePersistentChatVisibleForRoom(payload);
         renderAll();
         renderGameOver(state.gameOverData);
       }
@@ -4014,15 +4279,22 @@
         appendLobbyChatMessage(msg, true);
       });
       socket.on('room:chatMessage', (msg) => {
-        if (inGameChatMessages.firstElementChild && inGameChatMessages.firstElementChild.textContent.includes('게임 중에도')) {
-          inGameChatMessages.innerHTML = '';
-        }
-        appendInGameChatMessage(msg, true);
-        if (!inGameChatOpen && msg.sessionId !== sessionId) {
-          inGameUnreadCount++;
-          updateInGameChatBadge();
-          showInGameChatPeek(msg);
-          playTick(false);
+        roomChatHistory.push(msg);
+        if (roomChatHistory.length > 80) roomChatHistory.shift();
+
+        if (inGameChatOpen && activeChatTab === 'room') {
+          if (inGameChatMessages.firstElementChild && inGameChatMessages.firstElementChild.dataset?.emptyPlaceholder === '1') {
+            inGameChatMessages.innerHTML = '';
+          }
+          inGameChatMessages.appendChild(createChatBubbleNode(msg, false));
+          inGameChatMessages.scrollTop = inGameChatMessages.scrollHeight;
+        } else if (msg.sessionId !== sessionId) {
+          roomUnreadCount++;
+          updateInGameChatBadges();
+          if (!inGameChatOpen) {
+            showInGameChatPeek(msg);
+            playTick(false);
+          }
         }
       });
       socket.on('room:state', (payload) => {
@@ -4049,10 +4321,9 @@
         if (!isMyTurn()) renderRemoteDragGhost(payload);
       });
     } else {
-      showNicknameError('서버(Socket.IO)에 연결할 수 없습니다. Node.js 서버에서 접속해 주세요.');
+      showNicknameError('미리보기 모드입니다. 실제 멀티플레이는 Node.js 서버(Render)에서 접속해 주세요.');
     }
 
-    // 3초 이상 서버 타이머 신호가 안 오면 자동 재동기화 (멈춤 현상 방지)
     setInterval(() => {
       if (state.phase === 'playing' && state.code && Date.now() - lastTimerTickAt > 3500) {
         requestRoomResync();
@@ -4088,7 +4359,6 @@
     }
 
     function enterChatLobby() {
-      if (!socket) return;
       ensureAudio();
       showNicknameError('');
       const raw = inputPlayerName.value.trim();
@@ -4098,6 +4368,15 @@
         return;
       }
       const name = getCleanPlayerName();
+      if (!socket) {
+        hasEnteredLobby = true;
+        lobbyMyName.textContent = name;
+        renderLobbyUsers([{ sessionId, name }]);
+        renderOpenRooms([]);
+        renderAllLobbyMessages([]);
+        showChatLobbyView();
+        return;
+      }
       socket.emit('lobby:enter', { name, sessionId }, (res) => {
         if (!res || !res.ok) {
           showNicknameError((res && res.error) || '대화방 입장에 실패했습니다.');
@@ -4114,7 +4393,10 @@
     }
 
     function joinRoomByCode(rawCode) {
-      if (!socket) return;
+      if (!socket) {
+        showLobbyError('서버 연결이 필요합니다.');
+        return;
+      }
       ensureAudio();
       showLobbyError('');
       const name = getCleanPlayerName();
@@ -4177,10 +4459,13 @@
 
     lobbyChatForm.addEventListener('submit', (e) => {
       e.preventDefault();
-      if (!socket) return;
       const text = inputChatMessage.value.trim();
       if (!text) return;
       inputChatMessage.value = '';
+      if (!socket) {
+        appendLobbyChatMessage({ type: 'chat', senderName: myPlayerName || '플레이어', sessionId, text, timestamp: Date.now() }, true);
+        return;
+      }
       socket.emit('lobby:chat', { text }, (res) => {
         if (res && res.error) showToast(res.error, 'error');
       });
@@ -4191,7 +4476,10 @@
     });
 
     document.getElementById('btnCreateRoom').addEventListener('click', () => {
-      if (!socket) return;
+      if (!socket) {
+        showLobbyError('서버 연결이 필요합니다.');
+        return;
+      }
       ensureAudio();
       showLobbyError('');
       const name = getCleanPlayerName();
@@ -4210,9 +4498,17 @@
 
     document.getElementById('btnCopyCode').addEventListener('click', () => {
       if (!state.code) return;
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(state.code).then(() => showToast(`방 코드 ${state.code} 복사됨!`, 'success')).catch(() => {});
-      }
+      const ta = document.createElement('textarea');
+      ta.value = state.code;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast(`방 코드 ${state.code} 복사됨!`, 'success');
+      } catch (_e) {}
+      document.body.removeChild(ta);
     });
 
     document.getElementById('btnStartRoom').addEventListener('click', () => {
@@ -4236,31 +4532,39 @@
       stopVictoryEffects();
       forceResetInteraction();
       clearLifted();
-      closeInGameChat();
-      hideInGameChatPeek();
-      btnInGameChat.classList.add('hidden');
-      btnInGameChat.classList.remove('flex');
       inGameChatLoadedCode = null;
-      inGameUnreadCount = 0;
-      updateInGameChatBadge();
+      inGameChatUserMinimized = false;
+      roomChatHistory = [];
+      roomUnreadCount = 0;
+      globalUnreadCount = 0;
       state.code = null;
       state.phase = 'lobby';
       showChatLobbyView();
     }
 
-    btnInGameChat.addEventListener('click', toggleInGameChat);
-    document.getElementById('btnCloseInGameChat').addEventListener('click', closeInGameChat);
-    inGameChatPeek.addEventListener('click', openInGameChat);
+    // Persistent Chat Controls
+    btnInGameChat.addEventListener('click', togglePersistentChat);
+    btnFloatingChatFab.addEventListener('click', () => openPersistentChat(true));
+    document.getElementById('btnCloseInGameChat').addEventListener('click', () => closePersistentChat(true));
+    btnToggleChatMode.addEventListener('click', () => {
+      applyChatDisplayMode(chatDisplayMode === 'floating' ? 'split' : 'floating');
+    });
+    tabRoomChat.addEventListener('click', () => setActiveChatTab('room'));
+    tabGlobalChat.addEventListener('click', () => setActiveChatTab('global'));
+    inGameChatPeek.addEventListener('click', () => {
+      setActiveChatTab('room');
+      openPersistentChat(true);
+    });
     inGameChatForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = inputInGameChat.value.trim();
       if (!text) return;
       inputInGameChat.value = '';
-      sendInGameChat(text);
+      sendActivePersistentChat(text);
     });
     document.querySelectorAll('.quick-chat-emoji').forEach((btn) => {
       btn.addEventListener('click', () => {
-        sendInGameChat(btn.dataset.quickEmoji);
+        sendActivePersistentChat(btn.dataset.quickEmoji);
       });
     });
 
@@ -4306,7 +4610,6 @@
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         clearLifted();
-        closeInGameChat();
         helpModal.classList.add('hidden');
         gameMenuModal.classList.add('hidden');
       }
