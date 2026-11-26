@@ -352,6 +352,7 @@ function buildRoomPayloadFor(room, targetSessionId) {
     code: room.code,
     phase: room.phase,
     maxPlayers: room.maxPlayers,
+    aiDifficulty: room.aiDifficulty || 'pro',
     hostSessionId: room.hostSessionId,
     currentPlayerIndex: room.currentPlayerIndex,
     poolCount: room.pool.length,
@@ -415,8 +416,14 @@ function clearRoomTimers(room) {
   }
 }
 
+function startGameInRoom(room, fillWithAI = false, aiDifficulty = null) {
+  clearRoomTimers(room);
+
+  if (aiDifficulty === 'normal' || aiDifficulty === 'pro') {
 function startGameInRoom(room, fillWithAI = false) {
   clearRoomTimers(room);
+
+  room.aiDifficulty = 'pro';
 
   room.players = room.players.filter((p) => !p.isAI);
 
@@ -521,7 +528,7 @@ function startTurn(room) {
           advanceToNextPlayer(room);
         }
       }
-    }, 1100);
+    }, 1050);
   }
 }
 
@@ -634,7 +641,6 @@ function advanceToNextPlayer(room, toast = null) {
 
   if (room.finalRoundJustTriggered) {
     room.finalRoundJustTriggered = false;
-    // 다음 사람부터 1바퀴 돌아 마지막 카드를 뽑은 사람 차례까지 진행(총 인원수만큼 턴)
     room.finalRoundTurnsLeft = room.players.length;
     toast = {
       msg: `더미 소진! 다음 사람부터 한 바퀴 돌아 마지막 카드를 뽑은 ${room.finalRoundTriggerName}님 차례가 끝나면 점수로 등수를 계산합니다.`,
@@ -670,7 +676,6 @@ function computeFinalScores(room, forcedWinnerSessionId = null) {
     winnerEntry = sorted[0];
   }
 
-  // 1등의 패 합계를 0점으로 만드는 보정치(+minSum)를 나머지 플레이어 점수(-rawSum)에 각각 더함
   const minSum = winnerEntry.rawSum;
   let totalWinnerGain = 0;
 
@@ -705,7 +710,6 @@ function computeFinalScores(room, forcedWinnerSessionId = null) {
 
   rows.sort((a, b) => (a.isWinner !== b.isWinner ? (a.isWinner ? -1 : 1) : b.adjustedScore - a.adjustedScore));
 
-  // 등수 계산 (동점 시 같은 등수 부여)
   let currentRank = 1;
   rows.forEach((r, idx) => {
     if (idx > 0 && r.adjustedScore < rows[idx - 1].adjustedScore) {
@@ -750,7 +754,14 @@ function triggerGameOver(room, winner, subtitle, precomputed = null) {
   broadcastRoom(room);
 }
 
-// ==================== AI LOGIC ====================
+// ==================== PRO AI ENGINE (SOLVER + RECOMBINATION + JOKER SWAP) ====================
+const JOKER_TYPE = 52;
+
+function tileToType(tile) {
+  if (tile.isJoker) return JOKER_TYPE;
+  return COLOR_ORDER[tile.color] * 13 + (tile.num - 1);
+}
+
 function isAreaFreeOnBoard(board, row, col, len) {
   if (row < 0 || row >= GRID_ROWS || col < 0 || col + len > GRID_COLS) return false;
   for (let i = 0; i < len; i++) {
@@ -786,49 +797,592 @@ function findEmptySpotOnBoard(board, len) {
   return bestWithGap || bestAny;
 }
 
-function findCandidateSetsFromRack(rackTiles) {
-  const candidates = [];
-  const byNum = new Map();
-  for (const t of rackTiles) {
-    if (t.isJoker) continue;
-    if (!byNum.has(t.num)) byNum.set(t.num, []);
-    byNum.get(t.num).push(t);
-  }
-  for (const [num, list] of byNum.entries()) {
-    const uniq = [];
-    const seen = new Set();
-    for (const t of list) {
-      if (!seen.has(t.color)) {
-        seen.add(t.color);
-        uniq.push(t);
-      }
+function packGroupsCleanlyOnBoard(groupsTilesList) {
+  const board = createEmptyBoard();
+  // 긴 세트부터 배치하면 공간 효율이 훨씬 높음
+  const sorted = [...groupsTilesList].sort((a, b) => b.length - a.length);
+  let r = 0;
+  let c = 0;
+  for (const g of sorted) {
+    if (c > 0 && c + g.length > GRID_COLS) {
+      r++;
+      c = 0;
     }
-    if (uniq.length >= 3) candidates.push({ tiles: uniq, points: num * uniq.length });
+    if (r >= GRID_ROWS || c + g.length > GRID_COLS) {
+      const spot = findEmptySpotOnBoard(board, g.length);
+      if (!spot) return null;
+      for (let i = 0; i < g.length; i++) board[spot.row][spot.col + i] = g[i];
+      continue;
+    }
+    for (let i = 0; i < g.length; i++) board[r][c + i] = g[i];
+    c += g.length + 1;
+    if (c >= GRID_COLS) {
+      r++;
+      c = 0;
+    }
+  }
+  return board;
+}
+
+function layoutRecombinedBoard(untouchedGroups, newSets) {
+  const board = createEmptyBoard();
+  for (const g of untouchedGroups) {
+    for (let i = 0; i < g.tiles.length; i++) {
+      board[g.row][g.startCol + i] = g.tiles[i];
+    }
+  }
+  let allFit = true;
+  for (const tiles of newSets) {
+    const spot = findEmptySpotOnBoard(board, tiles.length);
+    if (!spot) {
+      allFit = false;
+      break;
+    }
+    for (let i = 0; i < tiles.length; i++) {
+      board[spot.row][spot.col + i] = tiles[i];
+    }
+  }
+  if (allFit) return board;
+  const allGroups = [...untouchedGroups.map((g) => g.tiles), ...newSets];
+  return packGroupsCleanlyOnBoard(allGroups);
+}
+
+// 타입 t(0..51)를 포함하는 모든 유효한 세트(그룹 3~4장, 런 3~5장) 생성
+function generateSetsContainingType(t, avail) {
+  const results = [];
+  const colorIdx = Math.floor(t / 13);
+  const num = (t % 13) + 1;
+  const availJokers = avail[JOKER_TYPE];
+
+  // 1) 같은 숫자 다른 색 그룹 (3장, 4장)
+  const otherColors = [];
+  for (let c = 0; c < 4; c++) {
+    if (c !== colorIdx) otherColors.push(c * 13 + (num - 1));
   }
 
-  for (const color of COLORS) {
-    const byN = new Map();
-    for (const t of rackTiles) {
-      if (!t.isJoker && t.color === color && !byN.has(t.num)) byN.set(t.num, t);
+  // 4장 그룹 (4색 모두)
+  {
+    const slots = [t, ...otherColors];
+    const types = [];
+    let jokersNeeded = 0;
+    for (const s of slots) {
+      if (avail[s] > 0) types.push(s);
+      else {
+        jokersNeeded++;
+        types.push(JOKER_TYPE);
+      }
     }
-    let n = 1;
-    while (n <= 13) {
-      if (byN.has(n)) {
-        const run = [];
-        let pts = 0;
-        while (n <= 13 && byN.has(n)) {
-          run.push(byN.get(n));
-          pts += n;
-          n++;
-        }
-        if (run.length >= 3) candidates.push({ tiles: run, points: pts });
-      } else {
-        n++;
+    if (jokersNeeded <= availJokers && jokersNeeded <= 2) {
+      results.push({ kind: 'group', num, types, points: num * 4, jokers: jokersNeeded });
+    }
+  }
+
+  // 3장 그룹 (다른 색 2개 조합)
+  const pairs = [
+    [otherColors[0], otherColors[1]],
+    [otherColors[0], otherColors[2]],
+    [otherColors[1], otherColors[2]],
+  ];
+  const seenGroup3 = new Set();
+  for (const [cA, cB] of pairs) {
+    const slots = [t, cA, cB];
+    const types = [];
+    let jokersNeeded = 0;
+    for (const s of slots) {
+      if (avail[s] > 0) types.push(s);
+      else {
+        jokersNeeded++;
+        types.push(JOKER_TYPE);
+      }
+    }
+    if (jokersNeeded <= availJokers && jokersNeeded <= 1) {
+      const key = [...types].sort((a, b) => a - b).join(',');
+      if (!seenGroup3.has(key)) {
+        seenGroup3.add(key);
+        results.push({ kind: 'group', num, types, points: num * 3, jokers: jokersNeeded });
       }
     }
   }
-  candidates.sort((a, b) => b.points - a.points);
-  return candidates;
+
+  // 2) 같은 색 연속 런 (길이 3, 4, 5 — 6장 이상은 3+3 등으로 자동 분할 가능)
+  for (let len = 3; len <= 5; len++) {
+    const minStart = Math.max(1, num - len + 1);
+    const maxStart = Math.min(13 - len + 1, num);
+    for (let start = minStart; start <= maxStart; start++) {
+      const types = [];
+      let jokersNeeded = 0;
+      let pts = 0;
+      let nonJokers = 0;
+      for (let k = 0; k < len; k++) {
+        const nVal = start + k;
+        const tp = colorIdx * 13 + (nVal - 1);
+        pts += nVal;
+        if (tp === t || avail[tp] > 0) {
+          types.push(tp);
+          nonJokers++;
+        } else {
+          jokersNeeded++;
+          types.push(JOKER_TYPE);
+        }
+      }
+      if (nonJokers >= 2 && jokersNeeded <= availJokers && jokersNeeded <= 2) {
+        results.push({ kind: 'run', colorIdx, start, len, types, points: pts, jokers: jokersNeeded });
+      }
+    }
+  }
+
+  // 조커를 적게 쓰고 점수가 높은 세트를 먼저 탐색
+  results.sort((a, b) => {
+    if (a.jokers !== b.jokers) return a.jokers - b.jokers;
+    if (a.types.length !== b.types.length) return b.types.length - a.types.length;
+    return b.points - a.points;
+  });
+
+  return results;
+}
+
+// 랙 타일만으로 30점 이상 첫 등록 최적 조합 탐색 (조커 포함)
+function solveInitialMeldPro(rackTiles, timeBudgetMs = 55) {
+  const opt = new Int8Array(53);
+  for (const t of rackTiles) opt[tileToType(t)]++;
+
+  // 후보 세트 목록 생성 (중복 제거)
+  const candMap = new Map();
+  for (let tp = 0; tp < 52; tp++) {
+    if (opt[tp] === 0) continue;
+    const sets = generateSetsContainingType(tp, opt);
+    for (const s of sets) {
+      const key = s.kind === 'run'
+        ? `R:${s.colorIdx}:${s.start}:${s.types.join(',')}`
+        : `G:${s.num}:${[...s.types].sort((a, b) => a - b).join(',')}`;
+      if (!candMap.has(key)) candMap.set(key, s);
+    }
+  }
+
+  const candidates = Array.from(candMap.values());
+  candidates.sort((a, b) => {
+    if (a.jokers !== b.jokers) return a.jokers - b.jokers;
+    return b.points - a.points;
+  });
+
+  const deadline = Date.now() + timeBudgetMs;
+  const totalRack = rackTiles.length;
+  let best = null;
+  let bestScore = -Infinity;
+  const chosen = [];
+
+  function canUse(set) {
+    // 같은 타입 중복 사용 체크 (그룹/런은 같은 정상 타입을 두 번 쓰지 않지만 조커는 최대 2장 가능)
+    let jNeed = 0;
+    for (const tp of set.types) {
+      if (tp === JOKER_TYPE) jNeed++;
+      else if (opt[tp] <= 0) return false;
+    }
+    return opt[JOKER_TYPE] >= jNeed;
+  }
+
+  function applySet(set, delta) {
+    for (const tp of set.types) opt[tp] += delta;
+  }
+
+  function dfs(idx, curPoints, curTiles, curJokers) {
+    if (curPoints >= 30) {
+      const winBonus = curTiles === totalRack ? 100000 : 0;
+      const score = winBonus + curTiles * 100 + curPoints * 2 - curJokers * 28;
+      if (score > bestScore) {
+        bestScore = score;
+        best = {
+          sets: chosen.map((s) => s),
+          points: curPoints,
+          tilesUsed: curTiles,
+        };
+      }
+      if (curTiles === totalRack) return;
+    }
+    if (idx >= candidates.length || Date.now() > deadline) return;
+
+    for (let i = idx; i < candidates.length; i++) {
+      if (Date.now() > deadline) return;
+      const s = candidates[i];
+      if (!canUse(s)) continue;
+      applySet(s, -1);
+      chosen.push(s);
+      dfs(i, curPoints + s.points, curTiles + s.types.length, curJokers + s.jokers);
+      chosen.pop();
+      applySet(s, 1);
+      if (best && best.tilesUsed === totalRack) return;
+    }
+  }
+
+  dfs(0, 0, 0, 0);
+  if (!best) return null;
+
+  // 추상 세트를 실제 랙 타일 객체로 매핑
+  const pools = Array.from({ length: 53 }, () => []);
+  for (const t of rackTiles) pools[tileToType(t)].push(t);
+
+  const concreteSets = [];
+  for (const s of best.sets) {
+    const tiles = [];
+    for (const tp of s.types) {
+      const obj = pools[tp].pop();
+      if (!obj) return null;
+      tiles.push(obj);
+    }
+    if (!validateSet(tiles).valid) return null;
+    concreteSets.push(tiles);
+  }
+
+  return { sets: concreteSets, points: best.points, tilesUsed: best.tilesUsed };
+}
+
+// 바닥 패(필수) + 내 패(선택)를 재조합하여 최대한 많은 내 패를 내려놓는 고수 솔버
+function solveRecombinationPro(boardGroups, rackTiles, timeBudgetMs = 80) {
+  const rackColors = new Set(rackTiles.filter((t) => !t.isJoker).map((t) => t.color));
+  const rackNums = new Set(rackTiles.filter((t) => !t.isJoker).map((t) => t.num));
+  const hasRackJoker = rackTiles.some((t) => t.isJoker);
+
+  // 내 패와 연관이 있는 바닥 그룹만 추려서 탐색 공간 최소화
+  const scoredGroups = boardGroups.map((g, idx) => {
+    let relevance = 0;
+    const hasBoardJoker = g.tiles.some((t) => t.isJoker);
+    if (hasBoardJoker) relevance += 50;
+    if (g.tiles.length >= 4) relevance += 15;
+    for (const t of g.tiles) {
+      if (t.isJoker) continue;
+      if (rackNums.has(t.num)) relevance += 12;
+      if (rackColors.has(t.color)) relevance += 4;
+    }
+    if (hasRackJoker) relevance += 5;
+    return { g, idx, relevance };
+  });
+
+  scoredGroups.sort((a, b) => b.relevance - a.relevance);
+  const maxActiveGroups = 9;
+  const activeSet = new Set();
+  for (const item of scoredGroups) {
+    if (item.relevance > 0 && activeSet.size < maxActiveGroups) {
+      activeSet.add(item.idx);
+    }
+  }
+
+  const activeGroups = [];
+  const untouchedGroups = [];
+  boardGroups.forEach((g, idx) => {
+    if (activeSet.has(idx)) activeGroups.push(g);
+    else untouchedGroups.push(g);
+  });
+
+  const activeBoardTiles = activeGroups.flatMap((g) => g.tiles);
+  const req = new Int8Array(53);
+  const opt = new Int8Array(53);
+  const avail = new Int8Array(53);
+
+  for (const t of activeBoardTiles) {
+    const tp = tileToType(t);
+    req[tp]++;
+    avail[tp]++;
+  }
+  for (const t of rackTiles) {
+    const tp = tileToType(t);
+    opt[tp]++;
+    avail[tp]++;
+  }
+
+  const totalRack = rackTiles.length;
+  const deadline = Date.now() + timeBudgetMs;
+  let best = null;
+  let bestScore = -Infinity;
+  const currentSets = [];
+
+  // 남은 순수 랙 타일들로 추가 세트 및 기존 세트 확장(탐욕적 마무리)
+  function tryGreedilyAddRemainingRack(setsCopy, remOpt) {
+    const extraSets = [...setsCopy];
+    const usedOptCount = { count: 0, pts: 0, jokers: 0 };
+
+    // 1) 이미 만들어진 세트에 남은 랙 타일 붙이기 (런 양끝 연장 / 3장 그룹 4장화)
+    let extended = true;
+    while (extended) {
+      extended = false;
+      for (let i = 0; i < extraSets.length; i++) {
+        const s = extraSets[i];
+        if (s.kind === 'group' && s.types.length === 3) {
+          for (let c = 0; c < 4; c++) {
+            const tp = c * 13 + (s.num - 1);
+            if (remOpt[tp] > 0 && !s.types.includes(tp)) {
+              remOpt[tp]--;
+              extraSets[i] = { ...s, types: [...s.types, tp], points: s.points + s.num };
+              usedOptCount.count++;
+              usedOptCount.pts += s.num;
+              extended = true;
+              break;
+            }
+          }
+        } else if (s.kind === 'run' && s.types.length < 13) {
+          if (s.start + s.len <= 13) {
+            const rightTp = s.colorIdx * 13 + (s.start + s.len - 1);
+            if (remOpt[rightTp] > 0) {
+              remOpt[rightTp]--;
+              const nVal = s.start + s.len;
+              extraSets[i] = { ...s, len: s.len + 1, types: [...s.types, rightTp], points: s.points + nVal };
+              usedOptCount.count++;
+              usedOptCount.pts += nVal;
+              extended = true;
+              continue;
+            }
+          }
+          if (s.start > 1) {
+            const leftTp = s.colorIdx * 13 + (s.start - 2);
+            if (remOpt[leftTp] > 0) {
+              remOpt[leftTp]--;
+              const nVal = s.start - 1;
+              extraSets[i] = { ...s, start: nVal, len: s.len + 1, types: [leftTp, ...s.types], points: s.points + nVal };
+              usedOptCount.count++;
+              usedOptCount.pts += nVal;
+              extended = true;
+              continue;
+            }
+          }
+        }
+      }
+    }
+
+    // 2) 남은 랙 타일만으로 만들 수 있는 새 세트 추가
+    let addedNew = true;
+    while (addedNew) {
+      addedNew = false;
+      let bestPure = null;
+      for (let tp = 0; tp < 52; tp++) {
+        if (remOpt[tp] <= 0) continue;
+        const cands = generateSetsContainingType(tp, remOpt);
+        for (const c of cands) {
+          if (!bestPure || (c.jokers < bestPure.jokers) || (c.jokers === bestPure.jokers && c.types.length > bestPure.types.length)) {
+            bestPure = c;
+          }
+        }
+      }
+      if (bestPure) {
+        for (const tp of bestPure.types) remOpt[tp]--;
+        extraSets.push(bestPure);
+        usedOptCount.count += bestPure.types.length;
+        usedOptCount.pts += bestPure.points;
+        usedOptCount.jokers += bestPure.jokers;
+        addedNew = true;
+      }
+    }
+
+    // 3) 남은 랙 조커가 있고, 승리할 수 있다면(남은 랙이 조커뿐) 기존 세트에 붙여 승리!
+    let remTotal = 0;
+    for (let i = 0; i < 53; i++) remTotal += remOpt[i];
+    if (remOpt[JOKER_TYPE] > 0 && remTotal === remOpt[JOKER_TYPE]) {
+      for (let i = 0; i < extraSets.length && remOpt[JOKER_TYPE] > 0; i++) {
+        const s = extraSets[i];
+        if (s.kind === 'group' && s.types.length < 4) {
+          remOpt[JOKER_TYPE]--;
+          extraSets[i] = { ...s, types: [...s.types, JOKER_TYPE], points: s.points + s.num, jokers: s.jokers + 1 };
+          usedOptCount.count++;
+          usedOptCount.pts += s.num;
+          usedOptCount.jokers++;
+        } else if (s.kind === 'run' && s.start + s.len <= 13) {
+          remOpt[JOKER_TYPE]--;
+          const nVal = s.start + s.len;
+          extraSets[i] = { ...s, len: s.len + 1, types: [...s.types, JOKER_TYPE], points: s.points + nVal, jokers: s.jokers + 1 };
+          usedOptCount.count++;
+          usedOptCount.pts += nVal;
+          usedOptCount.jokers++;
+        } else if (s.kind === 'run' && s.start > 1) {
+          remOpt[JOKER_TYPE]--;
+          const nVal = s.start - 1;
+          extraSets[i] = { ...s, start: nVal, len: s.len + 1, types: [JOKER_TYPE, ...s.types], points: s.points + nVal, jokers: s.jokers + 1 };
+          usedOptCount.count++;
+          usedOptCount.pts += nVal;
+          usedOptCount.jokers++;
+        }
+      }
+    }
+
+    return { sets: extraSets, extraCount: usedOptCount.count, extraPts: usedOptCount.pts, extraJokers: usedOptCount.jokers };
+  }
+
+  function evaluateSolution(usedRackCount, usedRackPts, usedRackJokers) {
+    const remOpt = new Int8Array(opt);
+    const finalized = tryGreedilyAddRemainingRack(currentSets, remOpt);
+    const totalUsed = usedRackCount + finalized.extraCount;
+    if (totalUsed <= 0) return;
+
+    const totalPts = usedRackPts + finalized.extraPts;
+    const totalJokers = usedRackJokers + finalized.extraJokers;
+    const isWin = totalUsed === totalRack;
+    const score = (isWin ? 100000 : 0) + totalUsed * 120 + totalPts * 2 - totalJokers * 20;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = {
+        sets: finalized.sets,
+        rackTilesUsed: totalUsed,
+        isWin,
+      };
+    }
+  }
+
+  function dfs(usedRackCount, usedRackPts, usedRackJokers) {
+    if (Date.now() > deadline) return;
+    if (best && best.isWin) return;
+
+    // 아직 배치되지 않은 필수(바닥) 정상 타일 찾기
+    let targetType = -1;
+    for (let i = 0; i < 52; i++) {
+      if (req[i] > 0) {
+        targetType = i;
+        break;
+      }
+    }
+
+    if (targetType === -1) {
+      // 모든 바닥 정상 타일이 배치됨! 바닥 조커가 남아있다면 기존 세트에 부착하거나 랙과 조합
+      if (req[JOKER_TYPE] > 0) {
+        const jRem = req[JOKER_TYPE];
+        // 바닥 조커를 현재 세트 중 하나에 끼워 넣기 시도
+        let attached = 0;
+        const backups = [];
+        for (let i = 0; i < currentSets.length && attached < jRem; i++) {
+          const s = currentSets[i];
+          if (s.kind === 'group' && s.types.length < 4) {
+            backups.push({ idx: i, prev: s });
+            currentSets[i] = { ...s, types: [...s.types, JOKER_TYPE], points: s.points + s.num, jokers: s.jokers + 1 };
+            attached++;
+          } else if (s.kind === 'run' && s.start + s.len <= 13) {
+            backups.push({ idx: i, prev: s });
+            const nVal = s.start + s.len;
+            currentSets[i] = { ...s, len: s.len + 1, types: [...s.types, JOKER_TYPE], points: s.points + nVal, jokers: s.jokers + 1 };
+            attached++;
+          } else if (s.kind === 'run' && s.start > 1) {
+            backups.push({ idx: i, prev: s });
+            const nVal = s.start - 1;
+            currentSets[i] = { ...s, start: nVal, len: s.len + 1, types: [JOKER_TYPE, ...s.types], points: s.points + nVal, jokers: s.jokers + 1 };
+            attached++;
+          }
+        }
+        if (attached === jRem) {
+          evaluateSolution(usedRackCount, usedRackPts, usedRackJokers);
+        }
+        for (const b of backups) currentSets[b.idx] = b.prev;
+        return;
+      }
+
+      evaluateSolution(usedRackCount, usedRackPts, usedRackJokers);
+      return;
+    }
+
+    const candidates = generateSetsContainingType(targetType, avail);
+    for (const s of candidates) {
+      if (Date.now() > deadline) return;
+
+      // 적용 시 req 우선 소진, 부족한 만큼 opt(랙) 소진
+      let jNeeded = 0;
+      let ok = true;
+      for (const tp of s.types) {
+        if (tp === JOKER_TYPE) jNeeded++;
+        else if (avail[tp] <= 0) { ok = false; break; }
+      }
+      if (!ok || avail[JOKER_TYPE] < jNeeded) continue;
+
+      const deltaReq = [];
+      const deltaOpt = [];
+      let addRackCnt = 0;
+      let addRackPts = 0;
+      let addRackJokers = 0;
+
+      for (const tp of s.types) {
+        avail[tp]--;
+        if (req[tp] > 0) {
+          req[tp]--;
+          deltaReq.push(tp);
+        } else {
+          opt[tp]--;
+          deltaOpt.push(tp);
+          addRackCnt++;
+          if (tp === JOKER_TYPE) {
+            addRackJokers++;
+          } else {
+            addRackPts += (tp % 13) + 1;
+          }
+        }
+      }
+
+      currentSets.push(s);
+      dfs(usedRackCount + addRackCnt, usedRackPts + addRackPts, usedRackJokers + addRackJokers);
+      currentSets.pop();
+
+      for (const tp of deltaReq) { req[tp]++; avail[tp]++; }
+      for (const tp of deltaOpt) { opt[tp]++; avail[tp]++; }
+
+      if (best && best.isWin) return;
+    }
+  }
+
+  dfs(0, 0, 0);
+
+  // 만약 activeGroups 재조합에서 좋은 해를 못 찾았더라도, 순수 랙 세트만 내려놓는 경우도 확인
+  if (!best) {
+    const remOpt = new Int8Array(opt);
+    const pureRes = tryGreedilyAddRemainingRack([], remOpt);
+    if (pureRes.extraCount > 0) {
+      best = {
+        sets: [...activeGroups.map((g) => ({ existingTiles: g.tiles })), ...pureRes.sets],
+        rackTilesUsed: pureRes.extraCount,
+        isWin: pureRes.extraCount === totalRack,
+      };
+    }
+  }
+
+  if (!best) return null;
+
+  // 추상 세트를 실제 타일 객체로 매핑 (바닥 타일 우선 배정 -> 100% 바닥 타일 보존)
+  const boardPools = Array.from({ length: 53 }, () => []);
+  const rackPools = Array.from({ length: 53 }, () => []);
+  for (const t of activeBoardTiles) boardPools[tileToType(t)].push(t);
+  for (const t of rackTiles) rackPools[tileToType(t)].push(t);
+
+  const concreteSets = [];
+  const usedRackIds = new Set();
+
+  for (const s of best.sets) {
+    if (s.existingTiles) {
+      concreteSets.push(s.existingTiles);
+      continue;
+    }
+    const tiles = [];
+    for (const tp of s.types) {
+      let obj = boardPools[tp].pop();
+      if (!obj) {
+        obj = rackPools[tp].pop();
+        if (!obj) return null;
+        usedRackIds.add(obj.id);
+      }
+      tiles.push(obj);
+    }
+    if (!validateSet(tiles).valid) return null;
+    concreteSets.push(tiles);
+  }
+
+  // 안전 검증: 모든 activeBoardTiles가 빠짐없이 쓰였는지 확인
+  for (let i = 0; i < 53; i++) {
+    if (boardPools[i].length > 0) return null;
+  }
+  if (usedRackIds.size === 0) return null;
+
+  const nextBoard = layoutRecombinedBoard(untouchedGroups, concreteSets);
+  if (!nextBoard) return null;
+
+  const finalGroups = getBoardGroups(nextBoard);
+  if (!finalGroups.every((g) => g.valid)) return null;
+
+  return {
+    nextBoard,
+    usedRackIds,
+    recombined: activeGroups.length > 0,
+  };
 }
 
 function executeAITurn(room) {
@@ -836,126 +1390,89 @@ function executeAITurn(room) {
   if (!ai || !ai.isAI || room.phase !== 'playing') return;
 
   const rackTiles = getRackTiles(ai);
-  const candidates = findCandidateSetsFromRack(rackTiles);
-  const chosenSets = [];
-  const usedIds = new Set();
-  let totalPts = 0;
 
-  for (const c of candidates) {
-    if (c.tiles.some((t) => usedIds.has(t.id))) continue;
-    chosenSets.push(c);
-    c.tiles.forEach((t) => usedIds.add(t.id));
-    totalPts += c.points;
-  }
-
-  // 시뮬레이션 보드로 이번 턴에 AI가 놓을 단계(steps)를 먼저 계산한 뒤, 한 세트씩 실시간으로 내려놓기
-  const simBoard = cloneBoard(room.board);
-  const steps = [];
-  const placedIds = new Set();
-
+  // ==================== 고수(PRO) AI 실행 ====================
   if (!ai.hasMelded) {
-    if (totalPts >= 30) {
+    const meld = solveInitialMeldPro(rackTiles, 55);
+    if (meld && meld.sets.length > 0) {
+      const simBoard = cloneBoard(room.board);
+      const steps = [];
+      const placedIds = new Set();
       let ok = true;
-      for (const s of chosenSets) {
-        const spot = findEmptySpotOnBoard(simBoard, s.tiles.length);
+
+      for (const tiles of meld.sets) {
+        const spot = findEmptySpotOnBoard(simBoard, tiles.length);
         if (!spot) {
           ok = false;
           break;
         }
-        for (let i = 0; i < s.tiles.length; i++) {
-          simBoard[spot.row][spot.col + i] = s.tiles[i];
-          placedIds.add(s.tiles[i].id);
+        for (let i = 0; i < tiles.length; i++) {
+          simBoard[spot.row][spot.col + i] = tiles[i];
+          placedIds.add(tiles[i].id);
         }
-        steps.push({ row: spot.row, col: spot.col, tiles: s.tiles });
+        steps.push({ row: spot.row, col: spot.col, tiles });
       }
-      if (!ok) {
-        steps.length = 0;
-        placedIds.clear();
+
+      if (ok && steps.length > 0) {
+        room.aiStepTimeouts = [];
+        steps.forEach((step, idx) => {
+          const tId = setTimeout(() => {
+            if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+            const stepIds = new Set();
+            for (let i = 0; i < step.tiles.length; i++) {
+              room.board[step.row][step.col + i] = step.tiles[i];
+              stepIds.add(step.tiles[i].id);
+            }
+            ai.rack = ai.rack.map((t) => (t && stepIds.has(t.id) ? null : t));
+            room.recentAITileIds = stepIds;
+            broadcastRoom(room);
+          }, idx * 550);
+          room.aiStepTimeouts.push(tId);
+        });
+
+        const finishId = setTimeout(() => {
+          if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+          ai.hasMelded = true;
+          room.consecutivePasses = 0;
+          if (getRackTiles(ai).length === 0) {
+            triggerGameOver(room, ai, `${ai.name} 승리!`);
+            return;
+          }
+          advanceToNextPlayer(room, { msg: `${ai.name}님이 ${meld.points}점으로 첫 등록했습니다! 🧠`, tone: 'success' });
+        }, steps.length * 550 + 250);
+        room.aiStepTimeouts.push(finishId);
+        return;
       }
     }
   } else {
-    for (const s of chosenSets) {
-      const spot = findEmptySpotOnBoard(simBoard, s.tiles.length);
-      if (spot) {
-        for (let i = 0; i < s.tiles.length; i++) {
-          simBoard[spot.row][spot.col + i] = s.tiles[i];
-          placedIds.add(s.tiles[i].id);
-        }
-        steps.push({ row: spot.row, col: spot.col, tiles: s.tiles });
-      }
-    }
-    let progress = true;
-    while (progress) {
-      progress = false;
-      const remaining = getRackTiles(ai).filter((t) => !placedIds.has(t.id));
-      const groups = getBoardGroups(simBoard);
-      for (const tile of remaining) {
-        if (tile.isJoker) continue;
-        let attached = false;
-        for (const g of groups) {
-          if (g.endCol + 1 < GRID_COLS && !simBoard[g.row][g.endCol + 1]) {
-            const rightEmpty = g.endCol + 2 >= GRID_COLS || !simBoard[g.row][g.endCol + 2];
-            if (rightEmpty && validateSet([...g.tiles, tile]).valid) {
-              simBoard[g.row][g.endCol + 1] = tile;
-              placedIds.add(tile.id);
-              steps.push({ row: g.row, col: g.endCol + 1, tiles: [tile] });
-              attached = true;
-              progress = true;
-              break;
-            }
-          }
-          if (g.startCol - 1 >= 0 && !simBoard[g.row][g.startCol - 1]) {
-            const leftEmpty = g.startCol - 2 < 0 || !simBoard[g.row][g.startCol - 2];
-            if (leftEmpty && validateSet([tile, ...g.tiles]).valid) {
-              simBoard[g.row][g.startCol - 1] = tile;
-              placedIds.add(tile.id);
-              steps.push({ row: g.row, col: g.startCol - 1, tiles: [tile] });
-              attached = true;
-              progress = true;
-              break;
-            }
-          }
-        }
-        if (attached) break;
-      }
-    }
-  }
-
-  if (steps.length > 0) {
-    room.aiStepTimeouts = [];
-    const wasFirstMeld = !ai.hasMelded;
-    const totalPlaced = placedIds.size;
-
-    steps.forEach((step, idx) => {
-      const tId = setTimeout(() => {
-        if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
-        const stepIds = new Set();
-        for (let i = 0; i < step.tiles.length; i++) {
-          room.board[step.row][step.col + i] = step.tiles[i];
-          stepIds.add(step.tiles[i].id);
-        }
-        ai.rack = ai.rack.map((t) => (t && stepIds.has(t.id) ? null : t));
-        room.recentAITileIds = stepIds;
+    const boardGroups = getBoardGroups(room.board);
+    const solved = solveRecombinationPro(boardGroups, rackTiles, 80);
+    if (solved && solved.usedRackIds.size > 0) {
+      const nextRack = ai.rack.map((t) => (t && solved.usedRackIds.has(t.id) ? null : t));
+      const verified = verifyBoardAndRackMove(room, ai, solved.nextBoard, nextRack);
+      if (verified) {
+        room.board = verified.board;
+        ai.rack = verified.rack;
+        room.recentAITileIds = new Set(solved.usedRackIds);
+        room.consecutivePasses = 0;
         broadcastRoom(room);
-      }, idx * 550);
-      room.aiStepTimeouts.push(tId);
-    });
 
-    const finishId = setTimeout(() => {
-      if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
-      if (wasFirstMeld) ai.hasMelded = true;
-      room.consecutivePasses = 0;
-      if (getRackTiles(ai).length === 0) {
-        triggerGameOver(room, ai, `${ai.name} 승리!`);
+        const count = solved.usedRackIds.size;
+        const finishId = setTimeout(() => {
+          if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
+          if (getRackTiles(ai).length === 0) {
+            triggerGameOver(room, ai, `${ai.name} 승리!`);
+            return;
+          }
+          const msg = solved.recombined
+            ? `${ai.name}님이 바닥 패를 재조합해 타일 ${count}개를 내려놓았습니다! 🧠`
+            : `${ai.name}님이 타일 ${count}개를 내려놓았습니다.`;
+          advanceToNextPlayer(room, { msg, tone: 'info' });
+        }, 600);
+        room.aiStepTimeouts = [finishId];
         return;
       }
-      const msg = wasFirstMeld
-        ? `${ai.name}이(가) ${totalPts}점으로 첫 등록했습니다!`
-        : `${ai.name}이(가) 타일 ${totalPlaced}개를 내려놓았습니다.`;
-      advanceToNextPlayer(room, { msg, tone: wasFirstMeld ? 'success' : 'info' });
-    }, steps.length * 550 + 250);
-    room.aiStepTimeouts.push(finishId);
-    return;
+    }
   }
 
   if (room.pool.length > 0) {
@@ -963,7 +1480,7 @@ function executeAITurn(room) {
   }
   room.recentAITileIds = new Set();
   room.consecutivePasses++;
-  advanceToNextPlayer(room, { msg: `${ai.name}이(가) 타일 1장을 뽑았습니다.`, tone: 'info' });
+  advanceToNextPlayer(room, { msg: `${ai.name}님이 타일 1장을 뽑았습니다.`, tone: 'info' });
 }
 
 // ==================== ANTI-CHEAT CONSERVATION CHECKS ====================
@@ -1114,6 +1631,7 @@ io.on('connection', (socket) => {
       createdAt: Date.now(),
       phase: 'waiting',
       maxPlayers: maxP,
+      aiDifficulty: 'pro',
       hostSessionId: sid,
       players: [
         {
@@ -1227,7 +1745,6 @@ io.on('connection', (socket) => {
     broadcastLobbyUpdate();
   });
 
-  // 네트워크 순단·탭 전환 후 자동 재동기화 및 멈춘 타이머 복구
   socket.on('room:resync', ({ code, sessionId } = {}, cb = () => {}) => {
     const targetCode = String(code || socket.data.roomCode || '').replace(/\D/g, '').slice(0, 4);
     const sid = String(sessionId || socket.data.sessionId || '');
@@ -1248,7 +1765,6 @@ io.on('connection', (socket) => {
       room.cleanupTimeout = null;
     }
 
-    // 혹시 타이머가 멈춘 상태라면 즉시 복구
     if (room.phase === 'playing' && !room.timerInterval) {
       startTurn(room);
     } else if (room.phase === 'playing' && room.turnDeadline) {
