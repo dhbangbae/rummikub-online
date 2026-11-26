@@ -27,6 +27,66 @@ const TURN_SECONDS = 40;
 const AI_NAMES = ['Congo', 'Daphne', 'Vera'];
 
 const rooms = new Map(); // code -> room
+const lobbyUsers = new Map(); // socket.id -> { sessionId, name, socketId }
+const lobbyMessages = []; // recent chat & system messages (max 60)
+const MAX_LOBBY_MESSAGES = 60;
+
+// ==================== LOBBY CHAT & ROOM LIST HELPERS ====================
+function getLobbyUsersList() {
+  const bySid = new Map();
+  for (const u of lobbyUsers.values()) {
+    bySid.set(u.sessionId, { sessionId: u.sessionId, name: u.name });
+  }
+  return Array.from(bySid.values());
+}
+
+function getPublicRoomsList() {
+  const list = [];
+  for (const room of rooms.values()) {
+    const host = room.players.find((p) => p.sessionId === room.hostSessionId) || room.players[0];
+    list.push({
+      code: room.code,
+      phase: room.phase,
+      hostName: host ? host.name : '방장',
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+      createdAt: room.createdAt || 0,
+    });
+  }
+  list.sort((a, b) => {
+    if (a.phase === 'waiting' && b.phase !== 'waiting') return -1;
+    if (a.phase !== 'waiting' && b.phase === 'waiting') return 1;
+    return b.createdAt - a.createdAt;
+  });
+  return list;
+}
+
+function broadcastLobbyUpdate() {
+  io.to('lobby').emit('lobby:update', {
+    users: getLobbyUsersList(),
+    rooms: getPublicRoomsList(),
+  });
+}
+
+function pushLobbyMessage(entry) {
+  lobbyMessages.push(entry);
+  if (lobbyMessages.length > MAX_LOBBY_MESSAGES) {
+    lobbyMessages.splice(0, lobbyMessages.length - MAX_LOBBY_MESSAGES);
+  }
+  io.to('lobby').emit('lobby:chatMessage', entry);
+}
+
+function pushLobbySystemMessage(text, roomCode = null) {
+  pushLobbyMessage({
+    id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type: 'system',
+    senderName: '시스템',
+    sessionId: null,
+    text,
+    roomCode,
+    timestamp: Date.now(),
+  });
+}
 
 // ==================== DECK & BOARD HELPERS ====================
 function createDeck() {
@@ -551,82 +611,6 @@ function handleTurnTimeout(room) {
   }
 }
 
-function handleTurnTimeout(room) {
-  clearRoomTimers(room);
-  const player = room.players[room.currentPlayerIndex];
-  if (!player || room.phase !== 'playing') return;
-
-  const evalRes = evaluateTurnState(room);
-  if (evalRes.canConfirm) {
-    confirmTurnSuccess(room, { msg: `${player.name} 시간 종료 — 유효한 배치가 자동 확정되었습니다.`, tone: 'success' });
-    return;
-  }
-
-  // 첫 등록 전(!player.hasMelded): 메이드가 안 된 패나 총합 30점 미만 패를 내려놓은 경우 즉시 자동 회수하고 1장 받기
-  if (!player.hasMelded) {
-    const hadChanges = hasBoardChangedFromSnapshot(room) || evalRes.playedCount > 0;
-    if (hadChanges && room.turnSnapshot) {
-      room.board = cloneBoard(room.turnSnapshot.board);
-      player.rack = cloneRack(room.turnSnapshot.rack);
-    }
-
-    const drawn = room.pool.length > 0 && drawTileFromPool(room, player) ? 1 : 0;
-    const msg = hadChanges
-      ? `${player.name} 시간 초과! 첫 등록 미완성/30점 미만 패를 자동 회수하고 ${drawn}장을 받았습니다.`
-      : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`;
-
-    room.consecutivePasses++;
-    advanceToNextPlayer(room, { msg, tone: 'error' });
-    return;
-  }
-
-  const groups = getBoardGroups(room.board);
-  const hasInvalidGroup = groups.some((g) => !g.valid);
-  let keptMadeOnBoard = false;
-  let hasUnresolvableOldBreak = false;
-
-  if (hasInvalidGroup) {
-    for (const g of groups) {
-      if (!g.valid) {
-        if (g.tiles.every((t) => room.playedFromRackIds.has(t.id))) {
-          for (let c = g.startCol; c <= g.endCol; c++) {
-            const t = room.board[g.row][c];
-            if (t) {
-              room.board[g.row][c] = null;
-              addTileToRack(player, t);
-            }
-          }
-        } else {
-          hasUnresolvableOldBreak = true;
-        }
-      }
-    }
-    if (hasUnresolvableOldBreak) {
-      room.board = cloneBoard(room.turnSnapshot.board);
-      player.rack = cloneRack(room.turnSnapshot.rack);
-    } else {
-      keptMadeOnBoard = hasBoardChangedFromSnapshot(room);
-    }
-  } else {
-    keptMadeOnBoard = hasBoardChangedFromSnapshot(room);
-  }
-
-  const penalty = hasInvalidGroup ? 3 : 1;
-  let drawn = 0;
-  for (let i = 0; i < penalty && room.pool.length > 0; i++) {
-    if (drawTileFromPool(room, player)) drawn++;
-  }
-
-  const msg = hasInvalidGroup
-    ? `${player.name} 시간 초과! 미완성 패를 회수하고 페널티 ${drawn}장을 받았습니다.`
-    : keptMadeOnBoard
-      ? `${player.name} 시간 초과! 메이드 패는 유지되고 강제로 ${drawn}장을 받았습니다.`
-      : `${player.name} 시간 초과! 강제로 타일 ${drawn}장을 받았습니다.`;
-
-  room.consecutivePasses++;
-  advanceToNextPlayer(room, { msg, tone: 'error' });
-}
-
 function confirmTurnSuccess(room, toast = null) {
   clearRoomTimers(room);
   const player = room.players[room.currentPlayerIndex];
@@ -1059,20 +1043,74 @@ function cleanupRoomIfEmpty(code) {
       if (r && !r.players.some((p) => !p.isAI && p.connected)) {
         clearRoomTimers(r);
         rooms.delete(code);
+        broadcastLobbyUpdate();
       }
     }, 1000 * 60 * 10);
   }
 }
 
 io.on('connection', (socket) => {
-  socket.on('room:create', ({ name, maxPlayers, sessionId }, cb = () => {}) => {
+  socket.on('lobby:enter', ({ name, sessionId } = {}, cb = () => {}) => {
     const cleanName = String(name || '플레이어').trim().slice(0, 14) || '플레이어';
+    const sid = String(sessionId || socket.id);
+    const prev = lobbyUsers.get(socket.id);
+
+    socket.data.playerName = cleanName;
+    socket.data.sessionId = sid;
+    socket.join('lobby');
+    lobbyUsers.set(socket.id, { sessionId: sid, name: cleanName, socketId: socket.id });
+
+    if (!prev) {
+      pushLobbySystemMessage(`${cleanName}님이 대화방에 입장했습니다.`);
+    } else if (prev.name !== cleanName) {
+      pushLobbySystemMessage(`${prev.name}님이 닉네임을 ${cleanName}(으)로 변경했습니다.`);
+    }
+
+    cb({
+      ok: true,
+      name: cleanName,
+      messages: lobbyMessages,
+      users: getLobbyUsersList(),
+      rooms: getPublicRoomsList(),
+    });
+    broadcastLobbyUpdate();
+  });
+
+  socket.on('lobby:chat', ({ text } = {}, cb = () => {}) => {
+    const cleanText = String(text || '').trim().slice(0, 200);
+    if (!cleanText) return cb({ error: '메시지를 입력하세요.' });
+
+    const senderName = socket.data.playerName || '플레이어';
+    const sid = socket.data.sessionId || socket.id;
+    pushLobbyMessage({
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: 'chat',
+      senderName,
+      sessionId: sid,
+      text: cleanText,
+      roomCode: null,
+      timestamp: Date.now(),
+    });
+    cb({ ok: true });
+  });
+
+  socket.on('lobby:getRooms', (_payload, cb = () => {}) => {
+    cb({
+      ok: true,
+      users: getLobbyUsersList(),
+      rooms: getPublicRoomsList(),
+    });
+  });
+
+  socket.on('room:create', ({ name, maxPlayers, sessionId }, cb = () => {}) => {
+    const cleanName = String(name || socket.data.playerName || '플레이어').trim().slice(0, 14) || '플레이어';
     const maxP = Math.max(2, Math.min(4, parseInt(maxPlayers, 10) || 4));
     const sid = String(sessionId || socket.id);
     const code = generateRoomCode();
 
     const room = {
       code,
+      createdAt: Date.now(),
       phase: 'waiting',
       maxPlayers: maxP,
       hostSessionId: sid,
@@ -1109,10 +1147,13 @@ io.on('connection', (socket) => {
     rooms.set(code, room);
     socket.data.roomCode = code;
     socket.data.sessionId = sid;
+    socket.data.playerName = cleanName;
     socket.join(code);
 
     cb({ ok: true, code });
     broadcastRoom(room);
+    pushLobbySystemMessage(`${cleanName}님이 새 게임방 [${code}] (${maxP}인)을 만들었습니다!`, code);
+    broadcastLobbyUpdate();
   });
 
   socket.on('room:join', ({ code, name, sessionId }, cb = () => {}) => {
@@ -1120,7 +1161,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(cleanCode);
     if (!room) return cb({ error: '존재하지 않는 4자리 방 코드입니다.' });
 
-    const cleanName = String(name || '플레이어').trim().slice(0, 14) || '플레이어';
+    const cleanName = String(name || socket.data.playerName || '플레이어').trim().slice(0, 14) || '플레이어';
     const sid = String(sessionId || socket.id);
 
     const existing = room.players.find((p) => p.sessionId === sid);
@@ -1163,10 +1204,12 @@ io.on('connection', (socket) => {
     }
     socket.data.roomCode = cleanCode;
     socket.data.sessionId = sid;
+    socket.data.playerName = cleanName;
     socket.join(cleanCode);
 
     cb({ ok: true, code: cleanCode });
     broadcastRoom(room, { msg: `${cleanName}님이 입장했습니다!`, tone: 'success' });
+    broadcastLobbyUpdate();
   });
 
   socket.on('room:start', ({ fillWithAI = false } = {}, cb = () => {}) => {
@@ -1179,6 +1222,7 @@ io.on('connection', (socket) => {
     const res = startGameInRoom(room, Boolean(fillWithAI));
     if (res.error) return cb(res);
     cb({ ok: true });
+    broadcastLobbyUpdate();
   });
 
   // 네트워크 순단·탭 전환 후 자동 재동기화 및 멈춘 타이머 복구
@@ -1340,12 +1384,14 @@ io.on('connection', (socket) => {
       if (room.players.length === 0) {
         clearRoomTimers(room);
         rooms.delete(code);
+        broadcastLobbyUpdate();
         return;
       }
       if (room.hostSessionId === sid) {
         room.hostSessionId = room.players[0].sessionId;
       }
       broadcastRoom(room);
+      broadcastLobbyUpdate();
     } else {
       const p = room.players.find((x) => x.sessionId === sid);
       if (p) {
@@ -1354,10 +1400,14 @@ io.on('connection', (socket) => {
         broadcastRoom(room, { msg: `${p.name}님의 연결이 끊어졌습니다.`, tone: 'error' });
       }
       cleanupRoomIfEmpty(code);
+      broadcastLobbyUpdate();
     }
   });
 
   socket.on('disconnect', () => {
+    const wasInLobby = lobbyUsers.delete(socket.id);
+    if (wasInLobby) broadcastLobbyUpdate();
+
     const code = socket.data.roomCode;
     const sid = socket.data.sessionId;
     if (!code) return;
@@ -1373,6 +1423,7 @@ io.on('connection', (socket) => {
         if (room.players.length === 0) {
           clearRoomTimers(room);
           rooms.delete(code);
+          broadcastLobbyUpdate();
           return;
         }
         if (room.hostSessionId === sid) {
@@ -1381,6 +1432,7 @@ io.on('connection', (socket) => {
       }
       io.to(room.code).emit('game:remoteDrag', { active: false });
       broadcastRoom(room);
+      broadcastLobbyUpdate();
       cleanupRoomIfEmpty(code);
     }
   });
