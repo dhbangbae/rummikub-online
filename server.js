@@ -416,10 +416,6 @@ function clearRoomTimers(room) {
   }
 }
 
-function startGameInRoom(room, fillWithAI = false, aiDifficulty = null) {
-  clearRoomTimers(room);
-
-  if (aiDifficulty === 'normal' || aiDifficulty === 'pro') {
 function startGameInRoom(room, fillWithAI = false) {
   clearRoomTimers(room);
 
