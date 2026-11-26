@@ -996,10 +996,11 @@
     const STORAGE_NAME_KEY = 'rummikub_player_name';
     const STORAGE_SID_KEY = 'rummikub_session_id';
 
-    let sessionId = localStorage.getItem(STORAGE_SID_KEY);
+    // Use sessionStorage for sessionId so multiple tabs in the same browser don't collide
+    let sessionId = sessionStorage.getItem(STORAGE_SID_KEY);
     if (!sessionId) {
       sessionId = 'sid-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-      localStorage.setItem(STORAGE_SID_KEY, sessionId);
+      sessionStorage.setItem(STORAGE_SID_KEY, sessionId);
     }
 
     const socket = typeof io !== 'undefined' ? io() : null;
@@ -1304,6 +1305,7 @@
     let lastPreviewEmitAt = 0;
     let lastTimerTickAt = Date.now();
     let resyncInFlight = false;
+    let endTurnInFlight = false;
 
     let inGameChatOpen = false;
     let inGameChatUserMinimized = false;
@@ -2183,7 +2185,10 @@
     function syncBoardMoveToServer() {
       if (socket && state.phase === 'playing' && isMyTurn()) {
         socket.emit('game:syncMove', { board: state.board, rack: state.myRack }, (res) => {
-          if (res && res.error) showToast(res.error, 'error');
+          if (res && res.error) {
+            showToast(res.error, 'error');
+            requestRoomResync();
+          }
         });
       }
     }
@@ -3537,6 +3542,7 @@
       interact.holdStage = 0;
       interact.snapTarget = null;
       syncSelectionVisuals();
+      flushPendingServerState();
     }
 
     function onTilePointerDown(e, originType, tile, pos, captureTarget = null) {
@@ -3755,7 +3761,6 @@
 
     function onGlobalPointerCancel(e) {
       if (!interact.active || !isMatchingPointer(e)) return;
-      if (interact.pointerType === 'mouse') return;
       onGlobalPointerUp(e);
     }
 
@@ -3865,8 +3870,18 @@
         syncSelectionVisuals();
       }
 
-      if (didMutate) pendingServerState = null;
-      else flushPendingServerState();
+      const hasTurnOrPhaseUpdate = Boolean(
+        pendingServerState &&
+        (pendingServerState.currentPlayerIndex !== state.currentPlayerIndex ||
+         pendingServerState.phase !== state.phase ||
+         pendingServerState.poolCount !== state.poolCount)
+      );
+
+      if (didMutate && !hasTurnOrPhaseUpdate) {
+        pendingServerState = null;
+      } else {
+        flushPendingServerState();
+      }
     }
 
     // ==================== TILE MOVEMENT ====================
@@ -4238,7 +4253,9 @@
       if (!socket || !socket.connected || !state.code || state.phase === 'lobby' || resyncInFlight) return;
       resyncInFlight = true;
       lastTimerTickAt = Date.now();
+      const timeoutId = setTimeout(() => { resyncInFlight = false; }, 2000);
       socket.emit('room:resync', { code: state.code, sessionId }, () => {
+        clearTimeout(timeoutId);
         resyncInFlight = false;
       });
     }
@@ -4272,9 +4289,19 @@
     }
 
     function applyServerRoomState(payload) {
+      endTurnInFlight = false;
       if (interact.active) {
-        pendingServerState = payload;
-        return;
+        const turnLostOrPhaseChanged =
+          payload.phase !== state.phase ||
+          Boolean(payload.isSpectator) !== state.isSpectator ||
+          (isMyTurn() && payload.currentPlayerIndex !== state.myPlayerIndex);
+        if (turnLostOrPhaseChanged) {
+          pendingServerState = null;
+          forceResetInteraction();
+        } else {
+          pendingServerState = payload;
+          return;
+        }
       }
 
       const prevPhase = state.phase;
@@ -4298,6 +4325,10 @@
       state.hasBoardChanged = Boolean(payload.hasBoardChanged);
       state.evalState = payload.evalState || null;
       state.gameOverData = payload.gameOverData || null;
+
+      if (!isMyTurn() && lifted.active && lifted.originType === 'board') {
+        clearLifted();
+      }
 
       if (state.isSpectator) {
         state.myRack = Array(20).fill(null);
@@ -4395,6 +4426,7 @@
         }
       });
       socket.on('room:state', (payload) => {
+        resyncInFlight = false;
         lastTimerTickAt = Date.now();
         applyServerRoomState(payload);
       });
@@ -4408,9 +4440,18 @@
       });
       socket.on('game:timer', ({ timeLeft, currentPlayerIndex }) => {
         lastTimerTickAt = Date.now();
+        const prevPlayerIndex = state.currentPlayerIndex;
         state.timeLeft = timeLeft;
         state.currentPlayerIndex = currentPlayerIndex;
         updateTimerDisplay();
+        if (prevPlayerIndex !== currentPlayerIndex && state.phase === 'playing') {
+          renderPlayersSidebar();
+          renderPoolAndStatus();
+          updateControls();
+          if (!interact.active) {
+            requestRoomResync();
+          }
+        }
         if (state.isSpectator) {
           const curr = state.players[currentPlayerIndex];
           if (curr) spectatorStatusInfo.textContent = `${curr.name}님의 차례 (${Math.max(0, timeLeft)}초)`;
@@ -4634,6 +4675,9 @@
     function leaveToLobby(emitLeave = true) {
       if (emitLeave && socket) socket.emit('room:leave');
       stopVictoryEffects();
+      pendingServerState = null;
+      resyncInFlight = false;
+      endTurnInFlight = false;
       forceResetInteraction();
       clearLifted();
       inGameChatLoadedCode = null;
@@ -4730,16 +4774,30 @@
     btnCancelLifted.addEventListener('click', clearLifted);
 
     btnEndTurn.addEventListener('click', () => {
-      if (!socket || !isMyTurn()) return;
+      if (!socket || !isMyTurn() || endTurnInFlight) return;
       ensureAudio();
+      if (interact.active) forceResetInteraction();
+      endTurnInFlight = true;
+      const turnAtEmit = state.currentPlayerIndex;
+      const unlockTimer = setTimeout(() => { endTurnInFlight = false; }, 3000);
+
       socket.emit('game:endTurn', {}, (res) => {
+        clearTimeout(unlockTimer);
+        endTurnInFlight = false;
         if (res && res.error) {
           playErrorBuzz();
           showToast(res.error, 'error');
-        } else if (res && res.action === 'confirm') {
-          playSuccessChord();
         } else {
-          playClack(false);
+          if (res && res.action === 'confirm') {
+            playSuccessChord();
+          } else {
+            playClack(false);
+          }
+          setTimeout(() => {
+            if (state.phase === 'playing' && state.currentPlayerIndex === turnAtEmit) {
+              requestRoomResync();
+            }
+          }, 600);
         }
       });
     });
