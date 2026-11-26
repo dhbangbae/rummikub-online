@@ -477,8 +477,8 @@
       <button id="btnHelp" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-blue-100 hover:brightness-110 transition" title="규칙 및 조작법">
         규칙
       </button>
-      <button id="btnLobby" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-200 hover:brightness-110 transition" title="방 나가기 / 로비">
-        « 로비
+      <button id="btnLobby" type="button" class="rk-pill-capsule px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-200 hover:brightness-110 transition" title="방 나가기 / 대화방">
+        « 대화방
       </button>
     </div>
   </div>
@@ -575,25 +575,114 @@
   <!-- FLOATING DRAG LAYER -->
   <div id="dragLayer"></div>
 
-  <!-- LOBBY MODAL -->
-  <div id="lobbyModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+  <!-- 1. NICKNAME ENTRY MODAL (FIRST SCREEN) -->
+  <div id="nicknameModal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="w-full max-w-md rounded-2xl bg-[#0b2759] border border-blue-400/45 shadow-2xl overflow-hidden">
-      <div class="px-6 py-5 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 text-center">
+      <div class="px-6 py-6 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 text-center">
         <div class="text-xs font-bold text-amber-300 tracking-widest uppercase">The Original · Online</div>
-        <h1 class="text-3xl font-black text-white tracking-tight" style="font-family: 'Playfair Display', Georgia, serif;">Rummikub</h1>
-        <p class="text-xs text-blue-200/85 mt-1">실시간 2~4인 멀티플레이 · 4자리 숫자 방 코드</p>
+        <h1 class="text-3xl sm:text-4xl font-black text-white tracking-tight mt-0.5" style="font-family: 'Playfair Display', Georgia, serif;">Rummikub</h1>
+        <p class="text-xs text-blue-200/85 mt-1.5">닉네임을 입력하고 대화방에 입장하세요</p>
         <div class="text-[11px] font-extrabold text-amber-200/90 mt-1">by 달님,별님</div>
       </div>
 
-      <div class="p-5 space-y-4">
+      <div class="p-6 space-y-4">
         <div>
-          <label for="inputPlayerName" class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">플레이어 이름 (자동 저장)</label>
+          <label for="inputPlayerName" class="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1.5">플레이어 닉네임 (자동 저장)</label>
           <input id="inputPlayerName" type="text" maxlength="14" placeholder="닉네임을 입력하세요"
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-blue-500/50 text-white font-bold text-sm focus:outline-none focus:border-amber-400" />
+            class="w-full px-4 py-3 rounded-xl bg-slate-950/75 border border-blue-500/50 text-white font-bold text-base focus:outline-none focus:border-amber-400" />
         </div>
 
-        <div class="p-3.5 rounded-xl bg-blue-950/60 border border-blue-500/30 space-y-3">
-          <div class="text-xs font-extrabold text-amber-300">새 방 만들기</div>
+        <button id="btnEnterLobby" type="button"
+          class="w-full py-3.5 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-black text-base shadow-xl transition active:scale-[0.99]">
+          💬 대화방 입장하기
+        </button>
+
+        <a href="https://open.kakao.com/o/gZIi5bZg" target="_blank" rel="noopener noreferrer"
+          class="w-full py-2.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#f6dc00] text-[#191919] font-black text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-2">
+          <span>💬</span>
+          <span>루미큐브 카톡방 바로가기</span>
+        </a>
+
+        <div id="nicknameError" class="hidden text-center text-xs font-bold text-rose-300 bg-rose-950/60 border border-rose-500/40 rounded-lg px-3 py-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. CHAT LOBBY MODAL (대화방) -->
+  <div id="chatLobbyModal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div class="w-full max-w-2xl h-[92vh] sm:h-[84vh] max-h-[760px] rounded-2xl bg-[#0b2759] border border-blue-400/50 shadow-2xl overflow-hidden flex flex-col">
+      <!-- Chat Lobby Header -->
+      <div class="px-4 py-3 bg-gradient-to-b from-[#17468f] to-[#0d2e69] border-b border-blue-400/35 flex items-center justify-between gap-2 shrink-0">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <h2 class="text-base sm:text-lg font-black text-white truncate">💬 루미큐브 대화방</h2>
+            <span id="lobbyOnlineBadge" class="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/50 text-emerald-200 text-[11px] font-extrabold shrink-0">접속 1명</span>
+          </div>
+          <div class="flex items-center gap-2 text-[11px] text-blue-200/85 mt-0.5">
+            <span>내 닉네임: <b id="lobbyMyName" class="text-amber-300">플레이어</b></span>
+            <button id="btnChangeNickname" type="button" class="underline text-sky-300 hover:text-sky-200 font-bold">변경</button>
+            <span class="opacity-60">· by 달님,별님</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="btnOpenGameMenu" type="button"
+            class="px-3.5 py-2 rounded-xl bg-gradient-to-b from-amber-300 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition active:scale-95 flex items-center gap-1.5">
+            <span>🎮</span>
+            <span>게임 메뉴</span>
+            <span id="openRoomsCountBadge" class="hidden px-1.5 py-0.5 rounded-full bg-slate-950/85 text-amber-300 text-[10px] font-black leading-none">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Online Users Strip -->
+      <div class="px-3.5 py-2 bg-slate-950/35 border-b border-blue-400/20 flex items-center gap-1.5 overflow-x-auto shrink-0">
+        <span class="text-[11px] font-bold text-blue-200/75 shrink-0">접속자:</span>
+        <div id="lobbyUsersList" class="flex items-center gap-1.5"></div>
+      </div>
+
+      <!-- Chat Messages Area -->
+      <div id="lobbyChatMessages" class="flex-1 min-h-0 overflow-y-auto custom-scroll p-3.5 sm:p-4 space-y-2.5 bg-slate-950/25"></div>
+
+      <!-- Quick Action & Chat Input Footer -->
+      <div class="p-3 bg-[#091f4a] border-t border-blue-400/30 space-y-2 shrink-0">
+        <form id="lobbyChatForm" class="flex items-center gap-2">
+          <input id="inputChatMessage" type="text" maxlength="200" autocomplete="off" placeholder="대화방에 메시지를 입력하세요..."
+            class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950/75 border border-blue-500/50 text-white text-sm font-medium focus:outline-none focus:border-amber-400" />
+          <button id="btnSendChat" type="submit"
+            class="px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm shadow transition active:scale-95 shrink-0">
+            전송
+          </button>
+        </form>
+        <div class="flex items-center justify-between gap-2 text-[11px]">
+          <button id="btnLobbyHelp" type="button" class="text-blue-200/85 hover:text-white font-bold underline">📖 규칙 &amp; 조작법</button>
+          <a href="https://open.kakao.com/o/gZIi5bZg" target="_blank" rel="noopener noreferrer"
+            class="px-2.5 py-1 rounded-lg bg-[#FEE500] hover:bg-[#f6dc00] text-[#191919] font-black text-[11px] flex items-center gap-1 shadow">
+            <span>💬</span>
+            <span>오픈 카톡방</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. GAME MENU MODAL (게임 만들기 / 열린 방 목록 / 코드 참여) -->
+  <div id="gameMenuModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-md max-h-[88vh] flex flex-col rounded-2xl bg-[#0b2759] border border-amber-400/55 shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 bg-gradient-to-b from-[#17468f] to-[#0b2759] border-b border-blue-400/30 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">🎮</span>
+          <h2 class="text-base font-black text-white">게임 메뉴</h2>
+        </div>
+        <button id="btnCloseGameMenu" type="button" class="px-3 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 border border-blue-400/35 text-xs font-bold text-blue-100">
+          ← 대화방으로
+        </button>
+      </div>
+
+      <div class="p-4 sm:p-5 overflow-y-auto custom-scroll space-y-4">
+        <!-- Create New Room -->
+        <div class="p-3.5 rounded-xl bg-blue-950/65 border border-blue-500/35 space-y-3">
+          <div class="text-xs font-extrabold text-amber-300">✨ 새 게임 만들기</div>
           <div class="grid grid-cols-3 gap-2" id="playerCountSelector">
             <button type="button" data-count="2" class="count-opt py-2 rounded-lg font-extrabold text-xs border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">2인</button>
             <button type="button" data-count="3" class="count-opt py-2 rounded-lg font-extrabold text-xs border transition bg-blue-950/80 border-blue-700 text-blue-200 hover:bg-blue-900">3인</button>
@@ -604,8 +693,18 @@
           </button>
         </div>
 
-        <div class="p-3.5 rounded-xl bg-blue-950/60 border border-blue-500/30 space-y-2.5">
-          <div class="text-xs font-extrabold text-sky-300">친구 방에 참여하기</div>
+        <!-- Open / Active Rooms List -->
+        <div class="p-3.5 rounded-xl bg-blue-950/65 border border-blue-500/35 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-extrabold text-emerald-300">🚪 열린 게임방 목록</div>
+            <button id="btnRefreshRooms" type="button" class="text-[11px] font-bold text-sky-300 hover:text-sky-200">↻ 새로고침</button>
+          </div>
+          <div id="openRoomsList" class="space-y-2 max-h-44 overflow-y-auto custom-scroll"></div>
+        </div>
+
+        <!-- Join by 4-digit code -->
+        <div class="p-3.5 rounded-xl bg-blue-950/65 border border-blue-500/35 space-y-2.5">
+          <div class="text-xs font-extrabold text-sky-300">🔑 4자리 코드로 참여하기</div>
           <div class="flex flex-col gap-2">
             <input id="inputRoomCode" type="text" inputmode="numeric" maxlength="4" placeholder="4자리 숫자 코드"
               class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-blue-500/50 text-white font-black text-center tracking-[0.28em] text-base focus:outline-none focus:border-sky-400" />
@@ -614,12 +713,6 @@
             </button>
           </div>
         </div>
-
-        <a href="https://open.kakao.com/o/gZIi5bZg" target="_blank" rel="noopener noreferrer"
-          class="w-full py-2.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#f6dc00] text-[#191919] font-black text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-2">
-          <span>💬</span>
-          <span>루미큐브 카톡방 바로가기</span>
-        </a>
 
         <div id="lobbyError" class="hidden text-center text-xs font-bold text-rose-300 bg-rose-950/60 border border-rose-500/40 rounded-lg px-3 py-2"></div>
       </div>
@@ -729,7 +822,7 @@
           다시 하기
         </button>
         <button id="btnBackToLobby" type="button" class="px-4 py-3 rounded-xl bg-blue-900 hover:bg-blue-800 text-blue-100 font-bold text-sm transition">
-          로비
+          대화방
         </button>
       </div>
     </div>
@@ -1061,6 +1154,10 @@
 
     // ==================== CLIENT STATE ====================
     let selectedMaxPlayers = 4;
+    let hasEnteredLobby = false;
+    let myPlayerName = localStorage.getItem(STORAGE_NAME_KEY) || '';
+    let lobbyUsersData = [];
+    let lobbyRoomsData = [];
     let pendingServerState = null;
     let lastPreviewEmitAt = 0;
     let lastTimerTickAt = Date.now();
@@ -1154,7 +1251,18 @@
     const toastBox = document.getElementById('toastBox');
     const toastInner = document.getElementById('toastInner');
 
-    const lobbyModal = document.getElementById('lobbyModal');
+    const nicknameModal = document.getElementById('nicknameModal');
+    const nicknameError = document.getElementById('nicknameError');
+    const chatLobbyModal = document.getElementById('chatLobbyModal');
+    const gameMenuModal = document.getElementById('gameMenuModal');
+    const lobbyOnlineBadge = document.getElementById('lobbyOnlineBadge');
+    const lobbyMyName = document.getElementById('lobbyMyName');
+    const lobbyUsersList = document.getElementById('lobbyUsersList');
+    const lobbyChatMessages = document.getElementById('lobbyChatMessages');
+    const lobbyChatForm = document.getElementById('lobbyChatForm');
+    const inputChatMessage = document.getElementById('inputChatMessage');
+    const openRoomsCountBadge = document.getElementById('openRoomsCountBadge');
+    const openRoomsList = document.getElementById('openRoomsList');
     const inputPlayerName = document.getElementById('inputPlayerName');
     const inputRoomCode = document.getElementById('inputRoomCode');
     const lobbyError = document.getElementById('lobbyError');
@@ -1168,18 +1276,7 @@
     const gameOverModal = document.getElementById('gameOverModal');
 
     // Restore saved nickname
-    const savedName = localStorage.getItem(STORAGE_NAME_KEY);
-    if (savedName) inputPlayerName.value = savedName;
-
-    let toastTimer = null;
-    function showToast(msg, tone = 'info') {
-      toastInner.textContent = msg;
-      toastInner.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-2xl border ' + (
-        tone === 'error'
-          ? 'bg-red-950/95 border-red-400/70 text-red-100'
-          : tone === 'success'
-            ? 'bg-emerald-950/95 border-emerald-400/70 text-emerald-100'
-            : 'bg-slate-950/90 border-blue-400/60 text-white'
+    if (myPlayerName) inputPlayerName.value = myPlayerName;
       );
       toastBox.classList.remove('opacity-0', 'translate-y-2');
       toastBox.classList.add('opacity-100', 'translate-y-0');
@@ -1208,227 +1305,170 @@
       }
     }
 
-    // ==================== HELPERS ====================
-    function isMyTurn() {
-      return state.phase === 'playing' && state.myPlayerIndex >= 0 && state.currentPlayerIndex === state.myPlayerIndex;
+    function showNicknameError(msg) {
+      if (!msg) {
+        nicknameError.classList.add('hidden');
+        nicknameError.textContent = '';
+      } else {
+        nicknameError.textContent = msg;
+        nicknameError.classList.remove('hidden');
+      }
     }
 
-    function getMyRackTiles() {
-      return state.myRack.filter(Boolean);
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
-    function ensureMyRackCapacity() {
-      const minSlots = 20;
-      const count = getMyRackTiles().length;
-      const neededPerRow = Math.max(10, Math.ceil(count / 2) + 2);
-      const targetLen = Math.max(minSlots, neededPerRow * 2);
-      while (state.myRack.length < targetLen) state.myRack.push(null);
-      if (state.myRack.length % 2 !== 0) state.myRack.push(null);
+    function formatChatTime(ts) {
+      try {
+        const d = new Date(ts || Date.now());
+        return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      } catch (_e) {
+        return '';
+      }
     }
 
-    function addTileToMyRack(tile) {
-      ensureMyRackCapacity();
-      const emptyIdx = state.myRack.indexOf(null);
-      if (emptyIdx !== -1) state.myRack[emptyIdx] = tile;
-      else state.myRack.push(tile);
+    function renderLobbyUsers(users) {
+      lobbyUsersData = Array.isArray(users) ? users : [];
+      lobbyOnlineBadge.textContent = `접속 ${lobbyUsersData.length}명`;
+      lobbyUsersList.innerHTML = '';
+      lobbyUsersData.forEach((u) => {
+        const isMe = u.sessionId === sessionId;
+        const pill = document.createElement('span');
+        pill.className = `px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 border ${
+          isMe
+            ? 'bg-amber-400/20 border-amber-300/70 text-amber-200'
+            : 'bg-blue-900/70 border-blue-500/40 text-blue-100'
+        }`;
+        pill.textContent = isMe ? `${u.name} (나)` : u.name;
+        lobbyUsersList.appendChild(pill);
+      });
     }
 
-    // ==================== VALIDATION ====================
-    function validateSet(tiles) {
-      if (!tiles || tiles.length < 3) return { valid: false, type: null, points: 0 };
-      const nonJokers = tiles.filter((t) => !t.isJoker);
-      if (nonJokers.length === 0) return { valid: false, type: null, points: 0 };
-
-      if (tiles.length <= 4) {
-        const num = nonJokers[0].num;
-        const allSameNum = nonJokers.every((t) => t.num === num);
-        const colorSet = new Set(nonJokers.map((t) => t.color));
-        if (allSameNum && colorSet.size === nonJokers.length) {
-          return { valid: true, type: 'group', points: num * tiles.length };
-        }
+    function renderOpenRooms(roomsList) {
+      lobbyRoomsData = Array.isArray(roomsList) ? roomsList : [];
+      const waitingRooms = lobbyRoomsData.filter((r) => r.phase === 'waiting');
+      if (waitingRooms.length > 0) {
+        openRoomsCountBadge.textContent = String(waitingRooms.length);
+        openRoomsCountBadge.classList.remove('hidden');
+      } else {
+        openRoomsCountBadge.classList.add('hidden');
       }
 
-      if (tiles.length <= 13) {
-        const color = nonJokers[0].color;
-        if (nonJokers.every((t) => t.color === color)) {
-          const firstIdx = tiles.findIndex((t) => !t.isJoker);
-          const startNum = tiles[firstIdx].num - firstIdx;
-          if (startNum >= 1 && startNum + tiles.length - 1 <= 13) {
-            let ok = true;
-            let pts = 0;
-            for (let i = 0; i < tiles.length; i++) {
-              const expected = startNum + i;
-              if (!tiles[i].isJoker && tiles[i].num !== expected) {
-                ok = false;
-                break;
-              }
-              pts += expected;
+      openRoomsList.innerHTML = '';
+      if (lobbyRoomsData.length === 0) {
+        openRoomsList.innerHTML = '<div class="text-center text-xs text-blue-200/70 py-4">현재 열린 게임방이 없습니다. 새 게임을 만들어보세요!</div>';
+        return;
+      }
+
+      lobbyRoomsData.forEach((r) => {
+        const isWaiting = r.phase === 'waiting';
+        const isFull = r.playerCount >= r.maxPlayers;
+        const canJoin = isWaiting && !isFull;
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-950/60 border border-blue-500/35';
+        row.innerHTML = `
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-400/50 text-amber-300 font-black text-xs tracking-wider">${escapeHtml(r.code)}</span>
+              <span class="font-extrabold text-xs sm:text-sm text-white truncate">${escapeHtml(r.hostName)}님의 방</span>
+            </div>
+            <div class="text-[11px] text-blue-200/75 mt-0.5">
+              ${isWaiting ? '대기 중' : '게임 진행 중'} · ${r.playerCount} / ${r.maxPlayers}명
+            </div>
+          </div>
+          <button type="button" data-join-code="${escapeHtml(r.code)}" ${canJoin ? '' : 'disabled'}
+            class="px-3 py-1.5 rounded-lg text-xs font-black shrink-0 transition ${
+              canJoin
+                ? 'bg-emerald-400 hover:bg-emerald-300 text-slate-950 shadow active:scale-95'
+                : 'bg-slate-800 text-slate-400 cursor-not-allowed'
+            }">
+            ${canJoin ? '참여하기' : (isWaiting ? '만원' : '진행중')}
+          </button>
+        `;
+        const joinBtn = row.querySelector('[data-join-code]');
+        if (joinBtn && canJoin) {
+          joinBtn.addEventListener('click', () => joinRoomByCode(r.code));
+        }
+        openRoomsList.appendChild(row);
+      });
+    }
+
+    function appendLobbyChatMessage(msg, shouldScroll = true) {
+      if (!msg) return;
+      const wrap = document.createElement('div');
+
+      if (msg.type === 'system') {
+        wrap.className = 'flex flex-col items-center my-1';
+        const inner = document.createElement('div');
+        inner.className = 'px-3 py-1 rounded-full bg-blue-950/80 border border-blue-400/30 text-[11px] font-bold text-blue-200/90 flex items-center gap-2 flex-wrap justify-center';
+        inner.innerHTML = `<span>${escapeHtml(msg.text)}</span>`;
+        if (msg.roomCode) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'px-2 py-0.5 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[10px] shadow transition';
+          btn.textContent = `방 ${msg.roomCode} 참여`;
+          btn.addEventListener('click', () => joinRoomByCode(msg.roomCode));
+          inner.appendChild(btn);
+        }
+        wrap.appendChild(inner);
+      } else {
+        const isMe = msg.sessionId === sessionId;
+        wrap.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+        wrap.innerHTML = `
+          <div class="text-[10px] font-bold text-blue-200/75 mb-0.5 px-1">
+            ${isMe ? '나' : escapeHtml(msg.senderName)} · ${formatChatTime(msg.timestamp)}
+          </div>
+          <div class="max-w-[82%] px-3 py-2 rounded-2xl text-xs sm:text-sm font-medium break-words shadow ${
+            isMe
+              ? 'bg-amber-400 text-slate-950 rounded-tr-sm font-bold'
+              : 'bg-blue-900/90 border border-blue-400/30 text-white rounded-tl-sm'
+          }">${escapeHtml(msg.text)}</div>
+        `;
+      }
+
+      lobbyChatMessages.appendChild(wrap);
+      if (shouldScroll) {
+        lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
+      }
+    }
+
+    function renderAllLobbyMessages(messages) {
+      lobbyChatMessages.innerHTML = '';
+      if (!Array.isArray(messages) || messages.length === 0) {
+        appendLobbyChatMessage({
+          type: 'system',
+          text: '대화방에 오신 것을 환영합니다! 자유롭게 채팅하고 우측 상단 [🎮 게임 메뉴]에서 방을 만들거나 참여해 보세요.',
+        }, false);
+      } else {
+        messages.forEach((m) => appendLobbyChatMessage(m, false));
+      }
+      lobbyChatMessages.scrollTop = lobbyChatMessages.scrollHeight;
+    }
+
+    function showChatLobbyView() {
+      waitingModal.classList.add('hidden');
+      gameOverModal.classList.add('hidden');
+      gameMenuModal.classList.add('hidden');
+      if (hasEnteredLobby) {
+        nicknameModal.classList.add('hidden');
+        chatLobbyModal.classList.remove('hidden');
+        if (socket && socket.connected) {
+          socket.emit('lobby:getRooms', {}, (res) => {
+            if (res && res.ok) {
+              renderLobbyUsers(res.users);
+              renderOpenRooms(res.rooms);
             }
-            if (ok) return { valid: true, type: 'run', points: pts };
-          }
+          });
         }
-      }
-      return { valid: false, type: null, points: 0 };
-    }
-
-    // 2장 이상 조합 가능 여부 (상관없는 패 옆 붙이기 차단용)
-    function canCombineTiles(tiles) {
-      if (!tiles || tiles.length < 2) return true;
-      if (tiles.length >= 3) return validateSet(tiles).valid;
-      const nonJokers = tiles.filter((t) => !t.isJoker);
-      if (nonJokers.length <= 1) return true;
-      const [a, b] = nonJokers;
-      if (a.num === b.num && a.color !== b.color) return true;
-      if (a.color === b.color && b.num === a.num + 1) return true;
-      return false;
-    }
-
-    function getBoardGroups(board = state.board) {
-      const groups = [];
-      for (let r = 0; r < GRID_ROWS; r++) {
-        const rowArr = board[r];
-        if (!rowArr) continue;
-        let c = 0;
-        while (c < GRID_COLS) {
-          if (rowArr[c]) {
-            const startCol = c;
-            const tiles = [];
-            while (c < GRID_COLS && rowArr[c]) {
-              tiles.push(rowArr[c]);
-              c++;
-            }
-            const check = validateSet(tiles);
-            groups.push({ row: r, startCol, endCol: c - 1, tiles, ...check });
-          } else {
-            c++;
-          }
-        }
-      }
-      return groups;
-    }
-
-    // ==================== RACK SORTING (789 & 777) ====================
-    function extractMadeRuns(tiles) {
-      const used = new Set();
-      const runs = [];
-      for (const color of COLORS) {
-        let found = true;
-        while (found) {
-          found = false;
-          const byNum = new Map();
-          for (const t of tiles) {
-            if (!t.isJoker && !used.has(t.id) && t.color === color && !byNum.has(t.num)) byNum.set(t.num, t);
-          }
-          let n = 1;
-          while (n <= 13) {
-            if (byNum.has(n)) {
-              const seq = [];
-              while (n <= 13 && byNum.has(n)) {
-                seq.push(byNum.get(n));
-                n++;
-              }
-              if (seq.length >= 3) {
-                seq.forEach((t) => used.add(t.id));
-                runs.push(seq);
-                found = true;
-                break;
-              }
-            } else {
-              n++;
-            }
-          }
-        }
-      }
-      runs.sort((a, b) => (a[0].color !== b[0].color ? COLOR_ORDER[a[0].color] - COLOR_ORDER[b[0].color] : a[0].num - b[0].num));
-      return { made: runs, remaining: tiles.filter((t) => !used.has(t.id)) };
-    }
-
-    function extractMadeGroups(tiles) {
-      const used = new Set();
-      const groups = [];
-      for (let num = 1; num <= 13; num++) {
-        let found = true;
-        while (found) {
-          found = false;
-          const picked = [];
-          const seen = new Set();
-          for (const color of COLORS) {
-            const m = tiles.find((t) => !t.isJoker && !used.has(t.id) && t.num === num && t.color === color && !seen.has(color));
-            if (m) {
-              seen.add(color);
-              picked.push(m);
-            }
-          }
-          if (picked.length >= 3) {
-            picked.forEach((t) => used.add(t.id));
-            groups.push(picked);
-            found = true;
-          }
-        }
-      }
-      return { made: groups, remaining: tiles.filter((t) => !used.has(t.id)) };
-    }
-
-    function compareByRun(a, b) {
-      if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
-      if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
-      if (a.num !== b.num) return a.num - b.num;
-      return a.id - b.id;
-    }
-
-    function compareByGroup(a, b) {
-      if (a.isJoker !== b.isJoker) return a.isJoker ? 1 : -1;
-      if (a.num !== b.num) return a.num - b.num;
-      if (a.color !== b.color) return COLOR_ORDER[a.color] - COLOR_ORDER[b.color];
-      return a.id - b.id;
-    }
-
-    function placeSortedGroupsOnMyRack(madeSets, remainingTiles) {
-      const totalTiles = madeSets.reduce((sum, s) => sum + s.length, 0) + remainingTiles.length;
-      const gapCount = madeSets.length;
-      const slotsPerRow = Math.max(10, Math.ceil((totalTiles + gapCount + 1) / 2) + 1);
-      const rack = Array(slotsPerRow * 2).fill(null);
-
-      let row = 0;
-      let col = 0;
-      for (const set of madeSets) {
-        if (col > 0 && col + set.length > slotsPerRow && row === 0) {
-          row = 1;
-          col = 0;
-        }
-        for (const t of set) {
-          if (col >= slotsPerRow && row === 0) {
-            row = 1;
-            col = 0;
-          }
-          const idx = row * slotsPerRow + col;
-          if (idx < rack.length) rack[idx] = t;
-          else rack.push(t);
-          col++;
-        }
-        col++;
-        if (col >= slotsPerRow && row === 0) {
-          row = 1;
-          col = 0;
-        }
-      }
-      for (const t of remainingTiles) {
-        if (col >= slotsPerRow && row === 0) {
-          row = 1;
-          col = 0;
-        }
-        const idx = row * slotsPerRow + col;
-        if (idx < rack.length) rack[idx] = t;
-        else rack.push(t);
-        col++;
-      }
-      if (rack.length % 2 !== 0) rack.push(null);
-      state.myRack = rack;
-    }
-
-    function syncRackOrderToServer() {
-      if (socket && state.phase === 'playing') {
-        socket.emit('game:syncRack', { rack: state.myRack });
+      } else {
+        chatLobbyModal.classList.add('hidden');
+        nicknameModal.classList.remove('hidden');
       }
     }
 
@@ -3513,19 +3553,25 @@
 
       if (state.phase === 'waiting') {
         stopVictoryEffects();
-        lobbyModal.classList.add('hidden');
+        nicknameModal.classList.add('hidden');
+        chatLobbyModal.classList.add('hidden');
+        gameMenuModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
         waitingModal.classList.remove('hidden');
         renderWaitingRoom();
       } else if (state.phase === 'playing') {
         stopVictoryEffects();
         lastTimerTickAt = Date.now();
-        lobbyModal.classList.add('hidden');
+        nicknameModal.classList.add('hidden');
+        chatLobbyModal.classList.add('hidden');
+        gameMenuModal.classList.add('hidden');
         waitingModal.classList.add('hidden');
         gameOverModal.classList.add('hidden');
         renderAll();
       } else if (state.phase === 'gameover') {
-        lobbyModal.classList.add('hidden');
+        nicknameModal.classList.add('hidden');
+        chatLobbyModal.classList.add('hidden');
+        gameMenuModal.classList.add('hidden');
         waitingModal.classList.add('hidden');
         renderAll();
         renderGameOver(state.gameOverData);
@@ -3534,9 +3580,24 @@
 
     if (socket) {
       socket.on('connect', () => {
+        if (hasEnteredLobby) {
+          socket.emit('lobby:enter', { name: myPlayerName || '플레이어', sessionId }, (res) => {
+            if (res && res.ok) {
+              renderLobbyUsers(res.users);
+              renderOpenRooms(res.rooms);
+            }
+          });
+        }
         if (state.code && state.phase !== 'lobby') {
           requestRoomResync();
         }
+      });
+      socket.on('lobby:update', ({ users, rooms }) => {
+        renderLobbyUsers(users);
+        renderOpenRooms(rooms);
+      });
+      socket.on('lobby:chatMessage', (msg) => {
+        appendLobbyChatMessage(msg, true);
       });
       socket.on('room:state', (payload) => {
         lastTimerTickAt = Date.now();
@@ -3562,7 +3623,7 @@
         if (!isMyTurn()) renderRemoteDragGhost(payload);
       });
     } else {
-      showLobbyError('서버(Socket.IO)에 연결할 수 없습니다. Node.js 서버에서 접속해 주세요.');
+      showNicknameError('서버(Socket.IO)에 연결할 수 없습니다. Node.js 서버에서 접속해 주세요.');
     }
 
     // 3초 이상 서버 타이머 신호가 안 오면 자동 재동기화 (멈춤 현상 방지)
@@ -3592,11 +3653,116 @@
     });
 
     function getCleanPlayerName() {
-      const name = inputPlayerName.value.trim().slice(0, 14) || '플레이어';
+      const name = (inputPlayerName.value || myPlayerName || '').trim().slice(0, 14) || '플레이어';
+      myPlayerName = name;
       localStorage.setItem(STORAGE_NAME_KEY, name);
       inputPlayerName.value = name;
+      lobbyMyName.textContent = name;
       return name;
     }
+
+    function enterChatLobby() {
+      if (!socket) return;
+      ensureAudio();
+      showNicknameError('');
+      const raw = inputPlayerName.value.trim();
+      if (!raw) {
+        showNicknameError('닉네임을 입력해 주세요.');
+        inputPlayerName.focus();
+        return;
+      }
+      const name = getCleanPlayerName();
+      socket.emit('lobby:enter', { name, sessionId }, (res) => {
+        if (!res || !res.ok) {
+          showNicknameError((res && res.error) || '대화방 입장에 실패했습니다.');
+          return;
+        }
+        hasEnteredLobby = true;
+        lobbyMyName.textContent = res.name || name;
+        renderLobbyUsers(res.users);
+        renderOpenRooms(res.rooms);
+        renderAllLobbyMessages(res.messages);
+        showChatLobbyView();
+        inputChatMessage.focus();
+      });
+    }
+
+    function joinRoomByCode(rawCode) {
+      if (!socket) return;
+      ensureAudio();
+      showLobbyError('');
+      const name = getCleanPlayerName();
+      const code = String(rawCode || '').replace(/\D/g, '').slice(0, 4);
+      if (code.length !== 4) {
+        showLobbyError('4자리 숫자 방 코드를 입력해 주세요.');
+        return;
+      }
+      socket.emit('room:join', { code, name, sessionId }, (res) => {
+        if (res && res.error) {
+          showLobbyError(res.error);
+          showToast(res.error, 'error');
+        }
+      });
+    }
+
+    document.getElementById('btnEnterLobby').addEventListener('click', enterChatLobby);
+    inputPlayerName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        enterChatLobby();
+      }
+    });
+
+    document.getElementById('btnChangeNickname').addEventListener('click', () => {
+      chatLobbyModal.classList.add('hidden');
+      gameMenuModal.classList.add('hidden');
+      nicknameModal.classList.remove('hidden');
+      inputPlayerName.focus();
+      inputPlayerName.select();
+    });
+
+    document.getElementById('btnOpenGameMenu').addEventListener('click', () => {
+      showLobbyError('');
+      gameMenuModal.classList.remove('hidden');
+      if (socket && socket.connected) {
+        socket.emit('lobby:getRooms', {}, (res) => {
+          if (res && res.ok) {
+            renderLobbyUsers(res.users);
+            renderOpenRooms(res.rooms);
+          }
+        });
+      }
+    });
+
+    document.getElementById('btnCloseGameMenu').addEventListener('click', () => {
+      gameMenuModal.classList.add('hidden');
+    });
+
+    document.getElementById('btnRefreshRooms').addEventListener('click', () => {
+      if (!socket) return;
+      socket.emit('lobby:getRooms', {}, (res) => {
+        if (res && res.ok) {
+          renderLobbyUsers(res.users);
+          renderOpenRooms(res.rooms);
+          showToast('열린 방 목록을 새로고침했습니다.');
+        }
+      });
+    });
+
+    lobbyChatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!socket) return;
+      const text = inputChatMessage.value.trim();
+      if (!text) return;
+      inputChatMessage.value = '';
+      socket.emit('lobby:chat', { text }, (res) => {
+        if (res && res.error) showToast(res.error, 'error');
+      });
+    });
+
+    document.getElementById('btnLobbyHelp').addEventListener('click', () => {
+      helpModal.classList.remove('hidden');
+    });
 
     document.getElementById('btnCreateRoom').addEventListener('click', () => {
       if (!socket) return;
@@ -3609,18 +3775,7 @@
     });
 
     document.getElementById('btnJoinRoom').addEventListener('click', () => {
-      if (!socket) return;
-      ensureAudio();
-      showLobbyError('');
-      const name = getCleanPlayerName();
-      const code = inputRoomCode.value.replace(/\D/g, '').slice(0, 4);
-      if (code.length !== 4) {
-        showLobbyError('4자리 숫자 방 코드를 입력해 주세요.');
-        return;
-      }
-      socket.emit('room:join', { code, name, sessionId }, (res) => {
-        if (res && res.error) showLobbyError(res.error);
-      });
+      joinRoomByCode(inputRoomCode.value);
     });
 
     inputRoomCode.addEventListener('input', () => {
@@ -3657,9 +3812,7 @@
       clearLifted();
       state.code = null;
       state.phase = 'lobby';
-      waitingModal.classList.add('hidden');
-      gameOverModal.classList.add('hidden');
-      lobbyModal.classList.remove('hidden');
+      showChatLobbyView();
     }
 
     document.getElementById('btnLeaveWaiting').addEventListener('click', leaveToLobby);
@@ -3705,6 +3858,7 @@
       if (e.key === 'Escape') {
         clearLifted();
         helpModal.classList.add('hidden');
+        gameMenuModal.classList.add('hidden');
       }
     });
 
