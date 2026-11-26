@@ -1683,6 +1683,62 @@
       return { board: nextBoard, spot };
     }
 
+    function planPlaceMadeWithAutoRelocate(row, startCol, tilesToPlace, removeIds = new Set()) {
+      const len = tilesToPlace.length;
+      if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
+
+      // 1차: 겹치거나 바로 닿은 패들만 가장 가까운 빈 자리로 이동
+      const pushed = planPushBlockersAround(row, startCol, tilesToPlace, removeIds);
+      if (pushed) {
+        return {
+          row: pushed.row,
+          col: pushed.col,
+          pushMoves: pushed.pushMoves,
+          nextBoard: pushed.nextBoard,
+          relocatedExisting: true,
+        };
+      }
+
+      // 2차: 보드가 빽빽할 경우 메이드 패를 원하는 위치에 고정하고 나머지 패들을 보드 빈 공간에 자동 재배치
+      const existingGroups = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        let c = 0;
+        while (c < GRID_COLS) {
+          const t = state.board[r][c];
+          if (t && !removeIds.has(t.id)) {
+            const gStart = c;
+            const gTiles = [];
+            while (c < GRID_COLS && state.board[r][c] && !removeIds.has(state.board[r][c].id)) {
+              gTiles.push({ ...state.board[r][c] });
+              c++;
+            }
+            existingGroups.push({ row: r, startCol: gStart, tiles: gTiles });
+          } else {
+            c++;
+          }
+        }
+      }
+
+      const simBoard = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
+      for (let i = 0; i < len; i++) simBoard[row][startCol + i] = { ...tilesToPlace[i] };
+
+      const moves = [];
+      for (const g of existingGroups) {
+        const spot = findNearestEmptySpotOn(simBoard, g.row, g.startCol, g.tiles.length);
+        if (!spot) return null;
+        for (let i = 0; i < g.tiles.length; i++) simBoard[spot.row][spot.col + i] = g.tiles[i];
+        moves.push({ blocker: g, dest: spot });
+      }
+
+      return {
+        row,
+        col: startCol,
+        pushMoves: moves,
+        nextBoard: simBoard,
+        relocatedExisting: true,
+      };
+    }
+
     function planPushBlockersAround(row, startCol, tilesToPlace, removeIds = new Set(), keepIds = new Set()) {
       const len = tilesToPlace.length;
       if (row < 0 || row >= GRID_ROWS || startCol < 0 || startCol + len > GRID_COLS) return null;
@@ -1808,11 +1864,16 @@
 
       const rect = boardGrid.getBoundingClientRect();
       const len = draggingTiles.length;
+      const isDraggingMade = validateSet(draggingTiles).valid;
       const ignoreIds = new Set(draggingTiles.map((t) => t.id));
       const totalGroupW = len * state.cellW;
       const groupLeftX = clientX - totalGroupW / 2;
       const fCol = state.viewColStart + (groupLeftX - rect.left) / state.cellW;
       const fRow = state.viewRowStart + (clientY - rect.top - state.cellH / 2) / state.rowStep;
+      const visMinCol = state.viewColStart;
+      const visMaxCol = Math.max(visMinCol, Math.min(GRID_COLS - len, state.viewColStart + state.viewCols - len));
+      const visMinRow = state.viewRowStart;
+      const visMaxRow = Math.min(GRID_ROWS - 1, state.viewRowStart + state.viewRows - 1);
 
       function checkAdjacencyCompatible(r, col) {
         const testRow = state.board[r].map((t) => (t && !ignoreIds.has(t.id) ? t : null));
@@ -1991,8 +2052,26 @@
       }
 
       if (hoveringOccupied) {
-        const baseCol0 = Math.max(0, Math.min(GRID_COLS - len, Math.round(fCol)));
-        const baseRow0 = Math.max(0, Math.min(GRID_ROWS - 1, Math.round(fRow)));
+        const baseCol0 = Math.max(visMinCol, Math.min(visMaxCol, Math.round(fCol)));
+        const baseRow0 = Math.max(visMinRow, Math.min(visMaxRow, Math.round(fRow)));
+
+        // 메이드된 패는 기존 패 위 어느 위치에나 배치 가능 (그 자리에 있던 패는 판 위 빈 자리로 자동 재배치)
+        if (isDraggingMade) {
+          const relocated = planPlaceMadeWithAutoRelocate(baseRow0, baseCol0, draggingTiles, ignoreIds);
+          if (relocated) {
+            return {
+              type: 'board',
+              row: relocated.row,
+              col: relocated.col,
+              isMagnet: false,
+              isValidMerge: true,
+              pushMoves: relocated.pushMoves,
+              nextBoard: relocated.nextBoard,
+              relocatedExisting: true,
+            };
+          }
+        }
+
         const nearEmpty = findNearestEmptySpotOn(state.board, baseRow0, baseCol0, len, ignoreIds);
         if (!nearEmpty) {
           const compacted = compactBoardToMakeSpace(state.board, len, ignoreIds);
@@ -2010,14 +2089,26 @@
         return null;
       }
 
-      // 2. 자유 배치 (화면 전체 + 랙 바로 위 공간 포함, 공간 부족 시 자동 밀기/정리, 상관없는 패 옆은 차단)
-      const visMinCol = state.viewColStart;
-      const visMaxCol = Math.max(visMinCol, Math.min(GRID_COLS - len, state.viewColStart + state.viewCols - len));
-      const visMinRow = state.viewRowStart;
-      const visMaxRow = Math.min(GRID_ROWS - 1, state.viewRowStart + state.viewRows - 1);
-
+      // 2. 자유 배치 (화면 전체 + 랙 바로 위 공간 포함, 공간 부족 시 자동 밀기/정리)
       let baseCol = Math.max(visMinCol, Math.min(visMaxCol, Math.round(fCol)));
       const baseRow = Math.max(visMinRow, Math.min(visMaxRow, Math.round(fRow)));
+
+      // 메이드된 패는 해당 자리에 기존 패가 있어도 원하는 위치에 바로 놓고 기존 패를 자동 재배치
+      if (isDraggingMade && !isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
+        const relocated = planPlaceMadeWithAutoRelocate(baseRow, baseCol, draggingTiles, ignoreIds);
+        if (relocated) {
+          return {
+            type: 'board',
+            row: relocated.row,
+            col: relocated.col,
+            isMagnet: false,
+            isValidMerge: true,
+            pushMoves: relocated.pushMoves,
+            nextBoard: relocated.nextBoard,
+            relocatedExisting: true,
+          };
+        }
+      }
 
       // 반올림 오차로 옆 타일 칸에 겹칠 때 커서가 실제 가리키는 인접 빈 칸 우선 사용
       if (!isAreaFreeOnBoard(baseRow, baseCol, len, ignoreIds)) {
@@ -2070,6 +2161,22 @@
 
       const adj = checkAdjacencyCompatible(baseRow, baseCol);
       if (adj.touchesNeighbor && !adj.compatible) {
+        // 메이드된 패를 상관없는 패 옆에 놓을 경우, 옆 패를 빈 자리로 자동 이동시키고 원하는 위치에 배치
+        if (isDraggingMade) {
+          const relocated = planPlaceMadeWithAutoRelocate(baseRow, baseCol, draggingTiles, ignoreIds);
+          if (relocated) {
+            return {
+              type: 'board',
+              row: relocated.row,
+              col: relocated.col,
+              isMagnet: false,
+              isValidMerge: true,
+              pushMoves: relocated.pushMoves,
+              nextBoard: relocated.nextBoard,
+              relocatedExisting: true,
+            };
+          }
+        }
         return { type: 'board-blocked', row: baseRow, col: baseCol, isMagnet: false, isValidMerge: false };
       }
 
@@ -2187,22 +2294,23 @@
           state.viewColStart = Math.floor((GRID_COLS - state.viewCols) / 2);
           state.viewRowStart = Math.max(0, GRID_ROWS - state.viewRows);
         } else {
-          const spanCols = Math.max(fitCols, (maxC - minC + 1) + 4);
-          const spanRows = Math.max(fitRows, (maxR - minR + 1) + 2);
+          const padCol = 2;
+          const padRow = 1;
+          const spanCols = Math.max(fitCols, (maxC - minC + 1) + padCol * 2);
+          const spanRows = Math.max(fitRows, (maxR - minR + 1) + padRow * 2);
+
           state.viewCols = Math.min(GRID_COLS, spanCols);
           state.viewRows = Math.min(GRID_ROWS, spanRows);
 
           const centerC = (minC + maxC) / 2;
-          const centerR = (minR + maxR) / 2;
           let colStart = Math.round(centerC - state.viewCols / 2);
-          let rowStart = Math.round(centerR - state.viewRows / 2);
           colStart = Math.max(0, Math.min(GRID_COLS - state.viewCols, colStart));
-          rowStart = Math.max(0, Math.min(GRID_ROWS - state.viewRows, rowStart));
 
-          if (minC < colStart) colStart = minC;
-          if (maxC >= colStart + state.viewCols) colStart = Math.max(0, maxC - state.viewCols + 1);
+          let rowStart = Math.max(0, GRID_ROWS - state.viewRows);
           if (minR < rowStart) rowStart = minR;
           if (maxR >= rowStart + state.viewRows) rowStart = Math.max(0, maxR - state.viewRows + 1);
+          if (minC < colStart) colStart = minC;
+          if (maxC >= colStart + state.viewCols) colStart = Math.max(0, maxC - state.viewCols + 1);
 
           state.viewColStart = colStart;
           state.viewRowStart = rowStart;
@@ -2210,20 +2318,12 @@
       }
 
       const maxCellW = Math.floor(availW / state.viewCols);
-      const effectiveRows = state.viewRows + Math.max(0, state.viewRows - 1) * gapRatio;
-      const maxCellH = Math.floor(availH / effectiveRows);
+      const totalRowFactor = state.viewRows + Math.max(0, state.viewRows - 1) * gapRatio;
+      const maxCellH = Math.floor(availH / totalRowFactor);
       let cellW = Math.min(maxCellW, Math.floor(maxCellH / aspect));
-      cellW = Math.max(12, Math.min(64, cellW));
-      let cellH = Math.max(17, Math.min(maxCellH, Math.round(cellW * aspect)));
-      let rowGap = Math.max(10, Math.round(cellH * gapRatio));
-
-      // 총 높이가 뷰포트를 넘지 않도록 미세 보정 (바닥 색이 항상 보이도록 최소 8px 유지)
-      while (state.viewRows * cellH + Math.max(0, state.viewRows - 1) * rowGap > availH && rowGap > 8) {
-        rowGap--;
-      }
-      while (state.viewRows * cellH + Math.max(0, state.viewRows - 1) * rowGap > availH && cellH > 17) {
-        cellH--;
-      }
+      cellW = Math.max(12, Math.min(58, cellW));
+      const cellH = Math.max(17, Math.min(maxCellH, Math.round(cellW * aspect)));
+      const rowGap = Math.max(10, Math.round(cellH * gapRatio));
 
       state.cellW = cellW;
       state.cellH = cellH;
@@ -2231,7 +2331,7 @@
       state.rowStep = cellH + rowGap;
 
       boardGrid.style.width = `${cellW * state.viewCols}px`;
-      boardGrid.style.height = `${state.viewRows * cellH + Math.max(0, state.viewRows - 1) * rowGap}px`;
+      boardGrid.style.height = `${cellH * state.viewRows + rowGap * Math.max(0, state.viewRows - 1)}px`;
     }
 
     // ==================== RENDERING ====================
@@ -2263,14 +2363,16 @@
 
       ordered.forEach(({ p, idx }) => {
         const isCurr = idx === state.currentPlayerIndex && state.phase === 'playing';
+        const isMe = idx === state.myPlayerIndex;
+        const count = isMe ? getMyRackTiles().length : (typeof p.tileCount === 'number' ? p.tileCount : 0);
         const av = AVATAR_STYLES[idx % AVATAR_STYLES.length];
 
         const seat = document.createElement('div');
         seat.className = 'flex flex-col items-center gap-1';
         seat.innerHTML = `
-          <div class="relative w-14 h-14 sm:w-[70px] sm:h-[70px] rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''}">
-            <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-2xl sm:text-4xl shadow-inner relative overflow-hidden">
-              <span class="${isCurr ? 'opacity-45' : ''}">${p.isAI ? av.emoji : '🧑'}</span>
+          <div class="relative w-14 h-14 sm:w-[72px] sm:h-[72px] rounded-full p-[3px] avatar-ring ${isCurr ? 'active-turn' : ''}">
+            <div class="w-full h-full rounded-full bg-gradient-to-b ${av.bg} flex items-center justify-center text-2xl sm:text-3xl shadow-inner relative overflow-hidden">
+              <span class="${isCurr ? 'opacity-40' : ''}">${p.isAI ? av.emoji : '🧑'}</span>
               ${isCurr ? `<span id="activeAvatarTimer" class="absolute inset-0 flex items-center justify-center text-xl sm:text-2xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">${Math.max(0, state.timeLeft)}</span>` : ''}
             </div>
             ${isCurr ? `
@@ -2280,11 +2382,11 @@
               </svg>
             ` : ''}
             ${p.hasMelded ? '<span class="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-amber-400 border border-white text-xs font-black text-slate-950 flex items-center justify-center shadow" title="30점 첫 등록 완료">★</span>' : ''}
-            ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-rose-500 border border-white text-[10px] font-bold flex items-center justify-center" title="연결 끊김">!</span>' : ''}
+            ${!p.connected && !p.isAI ? '<span class="absolute -bottom-1 -right-1 px-1 rounded bg-rose-600 text-[9px] font-black text-white shadow">오프라인</span>' : ''}
           </div>
-          <div class="px-2 py-1 rounded-lg bg-slate-950/75 border border-blue-400/35 text-xs sm:text-sm font-extrabold text-blue-100 flex items-center gap-1.5 max-w-full shadow">
-            <span class="truncate max-w-[52px] sm:max-w-[74px]">${p.name}</span>
-            <span class="text-amber-300 font-black text-sm sm:text-base">${p.tileCount}</span>
+          <div class="px-2 py-0.5 rounded-lg bg-slate-950/75 border border-blue-400/35 text-xs sm:text-sm font-extrabold text-blue-50 flex items-center gap-1.5 max-w-full shadow">
+            <span class="truncate max-w-[48px] sm:max-w-[66px]">${p.name}</span>
+            <span class="text-amber-300 font-black text-sm sm:text-base">${count}</span>
           </div>
         `;
         playersBar.appendChild(seat);
@@ -2540,18 +2642,20 @@
         magnetGhost.style.height = `${state.cellH - 2}px`;
         magnetGhost.innerHTML = '<span class="px-1 py-0.5 rounded bg-rose-950/90 text-rose-100 text-[9px] font-black shadow whitespace-nowrap">✕ 붙이기 불가</span>';
       } else {
-        magnetGhost.className = 'magnet-ghost ' + (st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free') + ((st.pushMoves || st.shiftTargetRight || st.autoMadeSpace) ? ' flex items-center justify-center' : '');
+        magnetGhost.className = 'magnet-ghost ' + (st.relocatedExisting ? 'snapped-valid' : st.isMagnet ? (st.isValidMerge ? 'snapped-valid' : 'snapped-magnet') : 'snapped-free') + ((st.pushMoves || st.shiftTargetRight || st.autoMadeSpace || st.relocatedExisting) ? ' flex items-center justify-center' : '');
         magnetGhost.style.left = `${offsetX + (st.col - state.viewColStart) * state.cellW + 1}px`;
         magnetGhost.style.top = `${offsetY + (st.row - state.viewRowStart) * state.rowStep + 1}px`;
         magnetGhost.style.width = `${interact.selectedTiles.length * state.cellW - 2}px`;
         magnetGhost.style.height = `${state.cellH - 2}px`;
-        magnetGhost.innerHTML = st.autoMadeSpace
-          ? '<span class="px-1 py-0.5 rounded bg-sky-950/90 text-sky-200 text-[9px] font-black shadow whitespace-nowrap">✨ 자리 자동 확보</span>'
-          : st.pushMoves
-            ? '<span class="px-1 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[9px] font-black shadow whitespace-nowrap">⇄ 주변 자동 이동</span>'
-            : st.shiftTargetRight
-              ? '<span class="px-1 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[9px] font-black shadow whitespace-nowrap">우측 이동 →</span>'
-              : '';
+        magnetGhost.innerHTML = st.relocatedExisting
+          ? '<span class="px-1 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[9px] font-black shadow whitespace-nowrap">⇄ 기존 패 자동 이동</span>'
+          : st.autoMadeSpace
+            ? '<span class="px-1 py-0.5 rounded bg-sky-950/90 text-sky-200 text-[9px] font-black shadow whitespace-nowrap">✨ 자리 자동 확보</span>'
+            : st.pushMoves
+              ? '<span class="px-1 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[9px] font-black shadow whitespace-nowrap">⇄ 주변 자동 이동</span>'
+              : st.shiftTargetRight
+                ? '<span class="px-1 py-0.5 rounded bg-emerald-950/90 text-emerald-200 text-[9px] font-black shadow whitespace-nowrap">우측 이동 →</span>'
+                : '';
       }
     }
 
@@ -3136,7 +3240,14 @@
         }
 
         playClack(true);
-        showToast(snapTarget.autoMadeSpace ? '자리를 자동 확보해 내려놓았습니다!' : '주변 패를 자동 이동하고 붙였습니다!', 'success');
+        showToast(
+          snapTarget.relocatedExisting
+            ? '기존 패를 판 위 빈 자리로 자동 이동하고 배치했습니다!'
+            : snapTarget.autoMadeSpace
+              ? '자리를 자동 확보해 내려놓았습니다!'
+              : '주변 패를 자동 이동하고 붙였습니다!',
+          'success'
+        );
         computeBoardDimensions(false);
         renderBoard(animatedIds);
         renderRack();
