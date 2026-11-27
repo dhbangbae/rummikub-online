@@ -45,6 +45,12 @@ function getPublicRoomsList() {
   for (const room of rooms.values()) {
     const host = room.players.find((p) => p.sessionId === room.hostSessionId) || room.players[0];
     const spectatorCount = (room.spectators || []).filter((s) => s.connected).length;
+    const rejoinablePlayers = room.players
+      .filter((p) => !p.isAI && (p.hasLeft || !p.connected))
+      .map((p) => ({ sessionId: p.sessionId, name: p.name }));
+    const activePlayerSessionIds = room.players
+      .filter((p) => !p.isAI)
+      .map((p) => p.sessionId);
     list.push({
       code: room.code,
       phase: room.phase,
@@ -52,6 +58,8 @@ function getPublicRoomsList() {
       playerCount: room.players.length,
       maxPlayers: room.maxPlayers,
       spectatorCount,
+      rejoinablePlayers,
+      activePlayerSessionIds,
       createdAt: room.createdAt || 0,
     });
   }
@@ -383,6 +391,7 @@ function buildRoomPayloadFor(room, targetSessionId) {
       isAI: p.isAI,
       connected: p.connected,
       hasLeft: Boolean(p.hasLeft),
+      aiTakeover: !p.isAI && (Boolean(p.hasLeft) || !p.connected),
       hasMelded: p.hasMelded,
       tileCount: getRackTiles(p).length,
       isHost: p.sessionId === room.hostSessionId,
@@ -477,7 +486,34 @@ function startGameInRoom(room, fillWithAI = false) {
 
   room.aiDifficulty = 'pro';
 
-  room.players = room.players.filter((p) => !p.isAI && !p.hasLeft);
+  // 연결이 유지된 기존 인간 플레이어만 유지
+  room.players = room.players.filter((p) => !p.isAI && !p.hasLeft && p.connected);
+
+  // 관전 중인 사람을 들어온 순서대로 플레이어로 참가시킴
+  const promotedNames = [];
+  if (Array.isArray(room.spectators) && room.spectators.length > 0) {
+    const remainingSpectators = [];
+    for (const s of room.spectators) {
+      if (!s.connected) continue;
+      if (room.players.some((p) => p.sessionId === s.sessionId)) continue;
+      if (room.players.length < room.maxPlayers) {
+        room.players.push({
+          sessionId: s.sessionId,
+          socketId: s.socketId,
+          name: s.name,
+          isAI: false,
+          connected: true,
+          hasLeft: false,
+          hasMelded: false,
+          rack: [],
+        });
+        promotedNames.push(s.name);
+      } else {
+        remainingSpectators.push(s);
+      }
+    }
+    room.spectators = remainingSpectators;
+  }
 
   if (fillWithAI) {
     let aiIdx = 0;
@@ -533,6 +569,13 @@ function startGameInRoom(room, fillWithAI = false) {
   }
 
   startTurn(room);
+
+  if (promotedNames.length > 0) {
+    io.to(room.code).emit('room:toast', {
+      msg: `👀 관전자 [${promotedNames.join(', ')}]님이 들어온 순서대로 플레이어로 참가했습니다!`,
+      tone: 'info',
+    });
+  }
   io.to(room.code).emit('room:toast', {
     msg: `🎲 무작위 추첨 결과 [${room.players[0].name}]님이 1번(선)으로 배정되었습니다!`,
     tone: 'success',
@@ -564,25 +607,8 @@ function startTurn(room) {
     });
   }
 
-  if (!player.isAI && !player.hasLeft && player.socketId) {
+  if (!player.isAI && !player.hasLeft && player.connected && player.socketId) {
     io.to(player.socketId).emit('game:yourTurn', { timeLeft: TURN_SECONDS });
-  }
-
-  if (player.hasLeft) {
-    room.aiTimeout = setTimeout(() => {
-      try {
-        if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== player) return;
-        const drawn = room.pool.length > 0 && drawTileFromPool(room, player) ? 1 : 0;
-        room.consecutivePasses++;
-        advanceToNextPlayer(room, {
-          msg: drawn > 0 ? `${player.name}님(퇴장) 자동 뽑기` : `${player.name}님(퇴장) 자동 패스`,
-          tone: 'info',
-        });
-      } catch (err) {
-        console.error('[LeftPlayerTurnError]', err);
-      }
-    }, 900);
-    return;
   }
 
   room.timerInterval = setInterval(() => {
@@ -602,7 +628,7 @@ function startTurn(room) {
     }
   }, 1000);
 
-  if (player.isAI) {
+  if (player.isAI || player.hasLeft) {
     room.aiTimeout = setTimeout(() => {
       try {
         executeAITurn(room);
@@ -614,6 +640,21 @@ function startTurn(room) {
         }
       }
     }, 1050);
+  } else if (!player.connected) {
+    // 일시적 새로고침(F5) 유예 3초 후에도 미접속이면 컴퓨터가 이어서 플레이
+    room.aiTimeout = setTimeout(() => {
+      try {
+        if (room.phase === 'playing' && room.players[room.currentPlayerIndex] === player && !player.connected) {
+          executeAITurn(room);
+        }
+      } catch (err) {
+        console.error('[DisconnectedAIError]', err);
+        if (room.phase === 'playing') {
+          if (room.pool.length > 0) drawTileFromPool(room, player);
+          advanceToNextPlayer(room);
+        }
+      }
+    }, 3000);
   }
 }
 
@@ -1447,8 +1488,10 @@ function solveRecombinationPro(boardGroups, rackTiles, timeBudgetMs = 80) {
 
 function executeAITurn(room) {
   const ai = room.players[room.currentPlayerIndex];
-  if (!ai || !ai.isAI || room.phase !== 'playing') return;
+  if (!ai || room.phase !== 'playing') return;
+  if (!ai.isAI && !ai.hasLeft && ai.connected) return;
 
+  const actorLabel = ai.isAI ? ai.name : `${ai.name}(🤖 AI대리)`;
   const rackTiles = getRackTiles(ai);
 
   if (!ai.hasMelded) {
@@ -1494,10 +1537,10 @@ function executeAITurn(room) {
           ai.hasMelded = true;
           room.consecutivePasses = 0;
           if (getRackTiles(ai).length === 0) {
-            triggerGameOver(room, ai, `${ai.name} 승리!`);
+            triggerGameOver(room, ai, `${actorLabel} 승리!`);
             return;
           }
-          advanceToNextPlayer(room, { msg: `${ai.name}님이 ${meld.points}점으로 첫 등록했습니다! 🧠`, tone: 'success' });
+          advanceToNextPlayer(room, { msg: `${actorLabel}님이 ${meld.points}점으로 첫 등록했습니다! 🧠`, tone: 'success' });
         }, steps.length * 550 + 250);
         room.aiStepTimeouts.push(finishId);
         return;
@@ -1520,12 +1563,12 @@ function executeAITurn(room) {
         const finishId = setTimeout(() => {
           if (room.phase !== 'playing' || room.players[room.currentPlayerIndex] !== ai) return;
           if (getRackTiles(ai).length === 0) {
-            triggerGameOver(room, ai, `${ai.name} 승리!`);
+            triggerGameOver(room, ai, `${actorLabel} 승리!`);
             return;
           }
           const msg = solved.recombined
-            ? `${ai.name}님이 바닥 패를 재조합해 타일 ${count}개를 내려놓았습니다! 🧠`
-            : `${ai.name}님이 타일 ${count}개를 내려놓았습니다.`;
+            ? `${actorLabel}님이 바닥 패를 재조합해 타일 ${count}개를 내려놓았습니다! 🧠`
+            : `${actorLabel}님이 타일 ${count}개를 내려놓았습니다.`;
           advanceToNextPlayer(room, { msg, tone: 'info' });
         }, 600);
         room.aiStepTimeouts = [finishId];
@@ -1539,7 +1582,7 @@ function executeAITurn(room) {
   }
   room.recentAITileIds = new Set();
   room.consecutivePasses++;
-  advanceToNextPlayer(room, { msg: `${ai.name}님이 타일 1장을 뽑았습니다.`, tone: 'info' });
+  advanceToNextPlayer(room, { msg: `${actorLabel}님이 타일 1장을 뽑았습니다.`, tone: 'info' });
 }
 
 // ==================== ANTI-CHEAT CONSERVATION CHECKS ====================
@@ -1751,13 +1794,33 @@ io.on('connection', (socket) => {
     const cleanName = String(name || socket.data.playerName || '플레이어').trim().slice(0, 14) || '플레이어';
     const sid = String(sessionId || socket.id);
 
-    // 1. 기존 게임 플레이어가 재접속하는 경우 (플레이어 자리 유지)
-    const existing = room.players.find((p) => p.sessionId === sid);
+    // 1. 기존 게임 플레이어가 재접속하는 경우 (세션 ID 또는 퇴장/미접속 상태의 동일 닉네임)
+    let existing = room.players.find((p) => p.sessionId === sid);
+    if (!existing && room.phase !== 'waiting') {
+      const byName = room.players.find(
+        (p) => !p.isAI && (p.hasLeft || !p.connected) && p.name === cleanName
+      );
+      if (byName) {
+        const oldSid = byName.sessionId;
+        byName.sessionId = sid;
+        if (room.hostSessionId === oldSid) room.hostSessionId = sid;
+        if (room.finalRoundTriggerSessionId === oldSid) room.finalRoundTriggerSessionId = sid;
+        existing = byName;
+      }
+    }
+
     if (existing) {
+      const wasAway = existing.hasLeft || !existing.connected;
       existing.socketId = socket.id;
       existing.connected = true;
       existing.hasLeft = false;
       if (cleanName) existing.name = cleanName;
+      if (Array.isArray(room.spectators)) {
+        room.spectators = room.spectators.filter((s) => s.sessionId !== sid);
+      }
+      if (!room.players.some((p) => !p.isAI && p.connected && p.sessionId === room.hostSessionId)) {
+        room.hostSessionId = sid;
+      }
       if (room.cleanupTimeout) {
         clearTimeout(room.cleanupTimeout);
         room.cleanupTimeout = null;
@@ -1766,8 +1829,30 @@ io.on('connection', (socket) => {
       socket.data.sessionId = sid;
       socket.data.playerName = cleanName;
       socket.join(cleanCode);
+
+      if (room.phase === 'playing') {
+        const curr = room.players[room.currentPlayerIndex];
+        const aiStepping = Array.isArray(room.aiStepTimeouts) && room.aiStepTimeouts.length > 0;
+        if (curr && curr.sessionId === sid && !aiStepping) {
+          if (room.aiTimeout) {
+            clearTimeout(room.aiTimeout);
+            room.aiTimeout = null;
+          }
+          if (!room.timerInterval) {
+            startTurn(room);
+          } else {
+            io.to(socket.id).emit('game:yourTurn', { timeLeft: room.timeLeft });
+          }
+        } else if (!room.timerInterval && !aiStepping) {
+          startTurn(room);
+        }
+      }
+
       cb({ ok: true, code: cleanCode, reconnected: true, isSpectator: false });
-      broadcastRoom(room, { msg: `${existing.name}님이 다시 접속했습니다.`, tone: 'info' });
+      broadcastRoom(room, {
+        msg: wasAway ? `${existing.name}님이 돌아와 자신의 게임을 이어서 진행합니다!` : `${existing.name}님이 다시 접속했습니다.`,
+        tone: 'success',
+      });
       broadcastLobbyUpdate();
       return;
     }
@@ -1886,7 +1971,7 @@ io.on('connection', (socket) => {
       room.cleanupTimeout = null;
     }
 
-    if (room.phase === 'playing' && !room.timerInterval && !room.players[room.currentPlayerIndex]?.hasLeft) {
+    if (room.phase === 'playing' && !room.timerInterval) {
       startTurn(room);
     } else if (room.phase === 'playing' && room.turnDeadline) {
       room.timeLeft = Math.max(0, Math.ceil((room.turnDeadline - Date.now()) / 1000));
@@ -2079,7 +2164,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // 3. 게임 중 / 종료 화면에서 플레이어가 직접 떠나는 경우
+    // 3. 게임 중 / 종료 화면에서 플레이어가 떠나는 경우 -> 컴퓨터가 이어서 플레이하며, 복귀 시 이어하기 가능
     const p = room.players.find((x) => x.sessionId === sid);
     if (p) {
       p.connected = false;
@@ -2093,9 +2178,10 @@ io.on('connection', (socket) => {
         }
       }
 
-      const anyHumanPlayerConnected = room.players.some((x) => !x.isAI && x.connected);
-      if (!anyHumanPlayerConnected) {
-        closeRoomCompletely(room, '모든 플레이어가 방을 떠나 방이 종료되었습니다.');
+      if (!hasAnyConnectedHuman(room)) {
+        clearRoomTimers(room);
+        cleanupRoomIfEmpty(code);
+        broadcastLobbyUpdate();
         return;
       }
 
@@ -2104,11 +2190,19 @@ io.on('connection', (socket) => {
           room.board = cloneBoard(room.turnSnapshot.board);
           p.rack = cloneRack(room.turnSnapshot.rack);
         }
-        if (room.pool.length > 0) drawTileFromPool(room, p);
-        room.consecutivePasses++;
-        advanceToNextPlayer(room, { msg: `${p.name}님이 방을 떠났습니다.`, tone: 'info' });
+        clearRoomTimers(room);
+        broadcastRoom(room, { msg: `${p.name}님이 방을 떠나 🤖 컴퓨터가 이어서 플레이합니다.`, tone: 'info' });
+        room.aiTimeout = setTimeout(() => {
+          try {
+            if (room.phase === 'playing' && room.players[room.currentPlayerIndex] === p) {
+              executeAITurn(room);
+            }
+          } catch (err) {
+            console.error('[LeftPlayerAIError]', err);
+          }
+        }, 900);
       } else {
-        broadcastRoom(room, { msg: `${p.name}님이 방을 떠났습니다.`, tone: 'info' });
+        broadcastRoom(room, { msg: `${p.name}님이 방을 떠났습니다. (차례 시 🤖 컴퓨터가 이어서 플레이합니다)`, tone: 'info' });
       }
       broadcastLobbyUpdate();
     }
@@ -2147,6 +2241,33 @@ io.on('connection', (socket) => {
         }
         if (room.hostSessionId === sid) {
           room.hostSessionId = room.players[0].sessionId;
+        }
+      } else {
+        if (!hasAnyConnectedHuman(room)) {
+          clearRoomTimers(room);
+          cleanupRoomIfEmpty(code);
+          broadcastLobbyUpdate();
+          return;
+        }
+        if (
+          room.phase === 'playing' &&
+          room.players[room.currentPlayerIndex]?.sessionId === sid &&
+          !room.aiTimeout &&
+          (!room.aiStepTimeouts || room.aiStepTimeouts.length === 0)
+        ) {
+          room.aiTimeout = setTimeout(() => {
+            try {
+              if (room.phase === 'playing' && room.players[room.currentPlayerIndex] === p && !p.connected) {
+                if (room.turnSnapshot) {
+                  room.board = cloneBoard(room.turnSnapshot.board);
+                  p.rack = cloneRack(room.turnSnapshot.rack);
+                }
+                executeAITurn(room);
+              }
+            } catch (err) {
+              console.error('[DisconnectAIError]', err);
+            }
+          }, 3000);
         }
       }
       io.to(room.code).emit('game:remoteDrag', { active: false });
